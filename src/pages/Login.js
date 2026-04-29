@@ -1,16 +1,17 @@
 import { supabase } from "../supabaseClient";
 import { useState } from "react";
+
+import WorkIcon from "@mui/icons-material/Work";
 import {
+  Alert,
   Box,
   Button,
+  CircularProgress,
   Container,
+  Paper,
   TextField,
   Typography,
-  Alert,
-  Paper,
-  CircularProgress,
 } from "@mui/material";
-import WorkIcon from "@mui/icons-material/Work";
 
 export default function Login() {
   const [email, setEmail] = useState("");

@@ -45,6 +45,11 @@ const emptyForm = {
   notes: "",
 };
 
+function normalizeUrl(url) {
+  if (!url) return "";
+  return /^https:\/\//i.test(url) ? url : `https://${url}`;
+}
+
 export default function Companies() {
   const notify = useNotify();
   const [companies, setCompanies] = useState([]);
@@ -115,7 +120,7 @@ export default function Companies() {
       const payload = {
         name: form.name.trim(),
         size: form.size ? parseInt(form.size) : null,
-        url: form.url.trim() || null,
+        url: normalizeUrl(form.url.trim()),
         glassdoor_rating: form.glassdoor_rating
           ? parseFloat(form.glassdoor_rating)
           : null,
@@ -236,7 +241,7 @@ export default function Companies() {
                           <Tooltip title={company.url}>
                             <IconButton
                               size="small"
-                              href={company.url}
+                              href={normalizeUrl(company.url)}
                               target="_blank"
                               rel="noopener noreferrer"
                             >

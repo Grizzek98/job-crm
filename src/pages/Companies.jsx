@@ -36,6 +36,7 @@ import {
   deleteCompany,
 } from "../services/companyService";
 import { useNotify } from "../context/NotificationContext";
+import { normalizeUrl } from "../utils/url";
 
 const emptyForm = {
   name: "",
@@ -45,10 +46,6 @@ const emptyForm = {
   notes: "",
 };
 
-function normalizeUrl(url) {
-  if (!url) return "";
-  return /^https:\/\//i.test(url) ? url : `https://${url}`;
-}
 
 export default function Companies() {
   const notify = useNotify();

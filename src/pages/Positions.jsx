@@ -28,6 +28,9 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { LocalizationProvider, DatePicker } from "@mui/x-date-pickers";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -54,16 +57,29 @@ const emptyForm = {
   url_listing: "",
   url_application: "",
   description: "",
+  requirements: "",
+  benefits: "",
+  travel_requirements: "",
   notes: "",
+  posted_at: null,
 };
 
+// 'applied' is intentionally excluded — it's set automatically when an application is created
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
   { value: "applying", label: "Applying" },
-  { value: "applied", label: "Applied" },
   { value: "not_interested", label: "Not Interested" },
   { value: "closed", label: "Closed" },
 ];
+
+// Full label map including auto-set statuses (used for display only)
+const STATUS_LABELS = {
+  active: "Active",
+  applying: "Applying",
+  applied: "Applied",
+  not_interested: "Not Interested",
+  closed: "Closed",
+};
 
 const TYPE_OPTIONS = [
   { value: "full_time", label: "Full Time" },
@@ -93,7 +109,7 @@ function statusColor(status) {
 }
 
 function statusLabel(status) {
-  return STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status;
+  return STATUS_LABELS[status] ?? status;
 }
 
 function typeLabel(type) {
@@ -180,7 +196,11 @@ export default function Positions() {
       url_listing: position.url_listing ?? "",
       url_application: position.url_application ?? "",
       description: position.description ?? "",
+      requirements: position.requirements ?? "",
+      benefits: position.benefits ?? "",
+      travel_requirements: position.travel_requirements ?? "",
       notes: position.notes ?? "",
+      posted_at: position.posted_at ? dayjs(position.posted_at) : null,
     });
     setDialogOpen(true);
   }
@@ -212,24 +232,34 @@ export default function Positions() {
         url_listing: normalizeUrl(form.url_listing.trim()) || null,
         url_application: normalizeUrl(form.url_application.trim()) || null,
         description: form.description.trim() || null,
+        requirements: form.requirements.trim() || null,
+        benefits: form.benefits.trim() || null,
+        travel_requirements: form.travel_requirements.trim() || null,
         notes: form.notes.trim() || null,
+        posted_at: form.posted_at?.toISOString() ?? null,
       };
 
       if (editingPosition) {
-        const updated = await updatePosition(editingPosition.id, payload);
+        const updated = await updatePosition(
+          editingPosition.id,
+          payload,
+          notify,
+          editingPosition.status,
+        );
         setPositions((prev) =>
           prev.map((p) => (p.id === updated.id ? updated : p)),
         );
       } else {
-        const created = await createPosition(payload);
+        const created = await createPosition(payload, notify);
         setPositions((prev) =>
           [...prev, created].sort((a, b) => a.name.localeCompare(b.name)),
         );
       }
 
+      notify("Position saved!", "success");
       closeDialog();
     } catch (err) {
-      notify(err.message);
+      notify(err.message, "error");
     } finally {
       setSaving(false);
     }
@@ -252,6 +282,7 @@ export default function Positions() {
   // --- Render ---
 
   return (
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
     <Box>
       {/* Page header */}
       <Stack
@@ -466,11 +497,7 @@ export default function Positions() {
                 value={form.pay_min}
                 onChange={handleFormChange}
                 type="number"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">$</InputAdornment>
-                  ),
-                }}
+                slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
                 fullWidth
               />
               <TextField
@@ -479,11 +506,7 @@ export default function Positions() {
                 value={form.pay_max}
                 onChange={handleFormChange}
                 type="number"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">$</InputAdornment>
-                  ),
-                }}
+                slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
                 fullWidth
               />
             </Stack>
@@ -527,6 +550,40 @@ export default function Positions() {
               multiline
               rows={3}
               fullWidth
+            />
+            <TextField
+              label="Requirements"
+              name="requirements"
+              value={form.requirements}
+              onChange={handleFormChange}
+              multiline
+              rows={3}
+              fullWidth
+              placeholder="Education, experience, skills required..."
+            />
+            <TextField
+              label="Benefits"
+              name="benefits"
+              value={form.benefits}
+              onChange={handleFormChange}
+              multiline
+              rows={2}
+              fullWidth
+              placeholder="Health, 401k, PTO..."
+            />
+            <TextField
+              label="Travel Requirements"
+              name="travel_requirements"
+              value={form.travel_requirements}
+              onChange={handleFormChange}
+              fullWidth
+              placeholder="e.g. Up to 25% travel"
+            />
+            <DatePicker
+              label="Posted Date"
+              value={form.posted_at}
+              onChange={(val) => setForm((f) => ({ ...f, posted_at: val }))}
+              slotProps={{ textField: { fullWidth: true } }}
             />
             <TextField
               label="Notes"
@@ -575,5 +632,6 @@ export default function Positions() {
         </DialogActions>
       </Dialog>
     </Box>
+    </LocalizationProvider>
   );
 }

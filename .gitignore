@@ -26,3 +26,6 @@ dist-ssr
 *.env
 *copilot-instructions.md
 *CLAUDE.md
+*.descriptionexample
+.claude
+supabase/.temp

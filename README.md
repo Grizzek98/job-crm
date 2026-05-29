@@ -1,6 +1,6 @@
 # Job Application CRM
 
-A personal job search tool I built for myself. It's a React app backed by Supabase that helps me track job opportunities, applications, interviews, and documents in one place — instead of juggling spreadsheets and browser tabs.
+A personal job search tool. Almost entirely made with AI vibe-coding using the Claude Sonnet 4.6 model because I wanted to see how well it would work. It's a React app backed by Supabase that helps me track job opportunities, applications, interviews, and documents in one place — instead of juggling spreadsheets and browser tabs.
 
 This is a single-user personal productivity app. It's not designed to be forked or self-hosted by others — the database schema, storage buckets, and OAuth credentials are all set up for my specific Supabase project.
 

@@ -1,4 +1,5 @@
 import { supabase } from "../supabaseClient";
+import { createAutoEvent } from "./eventService";
 
 export async function getContacts() {
   const { data, error } = await supabase
@@ -10,7 +11,7 @@ export async function getContacts() {
   return data;
 }
 
-export async function createContact(contact) {
+export async function createContact(contact, notify) {
   const { data, error } = await supabase
     .from("contacts")
     .insert([contact])
@@ -18,6 +19,17 @@ export async function createContact(contact) {
     .single();
 
   if (error) throw error;
+
+  const companyName = data.companies?.name ?? "unknown company";
+  await createAutoEvent(
+    {
+      type: "entity_created",
+      notes: `Contact '${data.name}' added at ${companyName}`,
+      application_id: null,
+    },
+    notify,
+  );
+
   return data;
 }
 
@@ -35,6 +47,5 @@ export async function updateContact(id, updates) {
 
 export async function deleteContact(id) {
   const { error } = await supabase.from("contacts").delete().eq("id", id);
-
   if (error) throw error;
 }

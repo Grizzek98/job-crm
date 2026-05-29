@@ -130,7 +130,7 @@ export default function Companies() {
           prev.map((c) => (c.id === updated.id ? updated : c)),
         );
       } else {
-        const created = await createCompany(payload);
+        const created = await createCompany(payload, notify);
         setCompanies((prev) =>
           [...prev, created].sort((a, b) => a.name.localeCompare(b.name)),
         );
@@ -324,12 +324,7 @@ export default function Companies() {
               value={form.glassdoor_rating}
               onChange={handleFormChange}
               type="number"
-              inputProps={{ min: 0, max: 5, step: 0.1 }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">/ 5</InputAdornment>
-                ),
-              }}
+              slotProps={{ htmlInput: { min: 0, max: 5, step: 0.1 }, input: { endAdornment: <InputAdornment position="end">/ 5</InputAdornment> } }}
               fullWidth
             />
             <TextField
@@ -338,7 +333,7 @@ export default function Companies() {
               value={form.notes}
               onChange={handleFormChange}
               multiline
-              rows={3}
+              minRows={3}
               fullWidth
             />
           </Stack>

@@ -139,7 +139,7 @@ export default function Contacts() {
           prev.map((c) => (c.id === updated.id ? updated : c)),
         );
       } else {
-        const created = await createContact(payload);
+        const created = await createContact(payload, notify);
         setContacts((prev) =>
           [...prev, created].sort((a, b) => a.name.localeCompare(b.name)),
         );
@@ -342,7 +342,7 @@ export default function Contacts() {
               value={form.notes}
               onChange={handleFormChange}
               multiline
-              rows={3}
+              minRows={3}
               fullWidth
             />
           </Stack>

@@ -1040,7 +1040,7 @@ export default function Crm() {
                 value={appForm.notes}
                 onChange={(e) => setAppForm((f) => ({ ...f, notes: e.target.value }))}
                 multiline
-                rows={2}
+                minRows={2}
                 fullWidth
               />
             </Stack>

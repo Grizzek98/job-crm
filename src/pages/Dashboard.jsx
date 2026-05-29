@@ -40,6 +40,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useTheme,
 } from "@mui/material";
 import { PieChart, Pie, Cell } from "recharts";
 import dayjs from "dayjs";
@@ -547,7 +548,7 @@ function GoalRow({ goal, onUpdate, onDelete, deleteMode, autoFocus,
                 <Typography
                   variant="body2"
                   fontWeight={isCompleted ? "bold" : "normal"}
-                  color={isCompleted ? "success.main" : "text.primary"}
+                  color={isCompleted ? "primary.main" : "text.primary"}
                 >
                   {goal.current_value ?? 0}
                 </Typography>
@@ -562,7 +563,7 @@ function GoalRow({ goal, onUpdate, onDelete, deleteMode, autoFocus,
               }}
               disabled={posDisabled}
               onClick={category === "number" ? handleIncrement : handleComplete}
-              color="success"
+              color="primary"
               variant={posDisabled ? "text" : "contained"}
               disableElevation
             >
@@ -616,6 +617,7 @@ function getTimeOfDay() {
 const MAX_POSITION_ROWS = 8;
 
 export default function Dashboard() {
+  const theme = useTheme();
   const notify = useNotify();
   const navigate = useNavigate();
   const { setCurrentVideo } = useFocus();
@@ -817,149 +819,152 @@ export default function Dashboard() {
         ))}
       </Grid>
 
-      {/* ── Positions Needing Attention ──────────────────────────────────── */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ pb: "12px !important" }}>
-          <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
-            <Typography variant="h6">🎯 Positions Needing Attention</Typography>
-            <Button size="small" onClick={() => navigate("/positions")}>All Positions →</Button>
-          </Stack>
+      {/* ── Positions Needing Attention + Stale Applications (side-by-side on md+) ── */}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
 
-          {loading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}><CircularProgress size={24} /></Box>
-          ) : positionsNeeding.length === 0 ? (
-            <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", py: 2 }}>
-              <CheckCircleIcon color="success" />
-              <Typography color="text.secondary" sx={{ fontStyle: "italic" }}>
-                All clear! No positions need attention right now. You're crushing it! 🎉
-              </Typography>
-            </Stack>
-          ) : (
-            <>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ width: 90 }}>Urgency</TableCell>
-                      <TableCell>Company</TableCell>
-                      <TableCell>Position</TableCell>
-                      <TableCell>Pay</TableCell>
-                      <TableCell>Updated</TableCell>
-                      <TableCell align="right">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {visiblePositions.map((pos) => {
-                      const tier = TIER_CONFIG[pos.tier];
-                      const listingUrl = pos.url_application || pos.url_listing;
-                      return (
-                        <TableRow key={pos.id} hover>
+        {/* Positions Needing Attention */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card sx={{ height: "100%" }}>
+            <CardContent sx={{ pb: "12px !important" }}>
+              <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
+                <Typography variant="h6">🎯 Positions Needing Attention</Typography>
+                <Button size="small" onClick={() => navigate("/positions")}>All →</Button>
+              </Stack>
+
+              {loading ? (
+                <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}><CircularProgress size={24} /></Box>
+              ) : positionsNeeding.length === 0 ? (
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", py: 2 }}>
+                  <CheckCircleIcon color="primary" />
+                  <Typography color="text.secondary" sx={{ fontStyle: "italic" }}>
+                    All clear! No positions need attention right now. You're crushing it! 🎉
+                  </Typography>
+                </Stack>
+              ) : (
+                <>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ width: 80 }}>Urgency</TableCell>
+                          <TableCell>Position</TableCell>
+                          <TableCell>Updated</TableCell>
+                          <TableCell align="right">Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {visiblePositions.map((pos) => {
+                          const tier = TIER_CONFIG[pos.tier];
+                          const listingUrl = pos.url_application || pos.url_listing;
+                          return (
+                            <TableRow key={pos.id} hover>
+                              <TableCell>
+                                <Chip label={tier.label} color={tier.color} size="small" sx={{ fontSize: "0.7rem" }} />
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight="medium" noWrap>{pos.name}</Typography>
+                                <Typography variant="caption" color="text.secondary" noWrap display="block">
+                                  {pos.companies?.name ?? "—"}{formatPay(pos) ? ` · ${formatPay(pos)}` : ""}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary" noWrap>{daysAgo(pos.updated_at)}</Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                <Stack direction="row" spacing={0.5} sx={{ justifyContent: "flex-end" }}>
+                                  {listingUrl && (
+                                    <Tooltip title="Open Listing">
+                                      <IconButton size="small" href={listingUrl} target="_blank" rel="noopener noreferrer">
+                                        <OpenInNewIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                  <Button
+                                    size="small" variant="outlined"
+                                    onClick={() => navigate(`/crm?apply=${pos.id}`)}
+                                    sx={{ whiteSpace: "nowrap", minWidth: "unset", px: 1, fontSize: "0.7rem" }}
+                                  >
+                                    Apply
+                                  </Button>
+                                </Stack>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  {hiddenPositionCount > 0 && (
+                    <Box sx={{ pt: 1.5, pb: 0.5, textAlign: "right" }}>
+                      <Button size="small" onClick={() => navigate("/positions")}>
+                        See {hiddenPositionCount} more →
+                      </Button>
+                    </Box>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Stale Applications */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card sx={{ height: "100%" }}>
+            <CardContent sx={{ pb: "12px !important" }}>
+              <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
+                <Typography variant="h6">👻 Stale Applications</Typography>
+                <Button size="small" onClick={() => navigate("/crm")}>View CRM →</Button>
+              </Stack>
+
+              {loading ? (
+                <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}><CircularProgress size={24} /></Box>
+              ) : staleApps.length === 0 ? (
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", py: 2 }}>
+                  <CheckCircleIcon color="primary" />
+                  <Typography color="text.secondary" sx={{ fontStyle: "italic" }}>
+                    No stale applications — all your active apps have had recent activity. Keep it up! 🔥
+                  </Typography>
+                </Stack>
+              ) : (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Position</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Last Activity</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {staleApps.map((app) => (
+                        <TableRow key={app.id} hover sx={{ cursor: "pointer" }} onClick={() => navigate("/crm")}>
                           <TableCell>
-                            <Chip label={tier.label} color={tier.color} size="small" sx={{ fontSize: "0.7rem" }} />
+                            <Typography variant="body2" fontWeight="medium" noWrap>{app.positions?.name ?? "—"}</Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap display="block">
+                              {app.positions?.companies?.name ?? "—"}
+                            </Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" noWrap>{pos.companies?.name ?? "—"}</Typography>
+                            <Chip
+                              label={appStatusLabel(app.status)} size="small"
+                              color={app.status === "interviewing" ? "info" : "default"}
+                              sx={{ fontSize: "0.7rem" }}
+                            />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" fontWeight="medium" noWrap>{pos.name}</Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary" noWrap>{formatPay(pos) ?? "—"}</Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary" noWrap>{daysAgo(pos.updated_at)}</Typography>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={0.5} sx={{ justifyContent: "flex-end" }}>
-                              {listingUrl && (
-                                <Tooltip title="Open Listing">
-                                  <IconButton size="small" href={listingUrl} target="_blank" rel="noopener noreferrer">
-                                    <OpenInNewIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                              <Button
-                                size="small" variant="outlined"
-                                onClick={() => navigate(`/crm?apply=${pos.id}`)}
-                                sx={{ whiteSpace: "nowrap", minWidth: "unset", px: 1.5, fontSize: "0.75rem" }}
-                              >
-                                Create Application
-                              </Button>
-                            </Stack>
+                            <Typography variant="body2" color="error.main">{daysAgo(app.updated_at)}</Typography>
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              {hiddenPositionCount > 0 && (
-                <Box sx={{ pt: 1.5, pb: 0.5, textAlign: "right" }}>
-                  <Button size="small" onClick={() => navigate("/positions")}>
-                    See {hiddenPositionCount} more →
-                  </Button>
-                </Box>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </Grid>
 
-      {/* ── Stale Applications ───────────────────────────────────────────── */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ pb: "12px !important" }}>
-          <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
-            <Typography variant="h6">👻 Stale Applications</Typography>
-            <Button size="small" onClick={() => navigate("/crm")}>View CRM →</Button>
-          </Stack>
-
-          {loading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}><CircularProgress size={24} /></Box>
-          ) : staleApps.length === 0 ? (
-            <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", py: 2 }}>
-              <CheckCircleIcon color="success" />
-              <Typography color="text.secondary" sx={{ fontStyle: "italic" }}>
-                No stale applications — all your active apps have had recent activity. Keep it up! 🔥
-              </Typography>
-            </Stack>
-          ) : (
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Company</TableCell>
-                    <TableCell>Position</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Last Activity</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {staleApps.map((app) => (
-                    <TableRow key={app.id} hover sx={{ cursor: "pointer" }} onClick={() => navigate("/crm")}>
-                      <TableCell>
-                        <Typography variant="body2" noWrap>{app.positions?.companies?.name ?? "—"}</Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="medium" noWrap>{app.positions?.name ?? "—"}</Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={appStatusLabel(app.status)} size="small"
-                          color={app.status === "interviewing" ? "info" : "default"}
-                          sx={{ fontSize: "0.7rem" }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="error.main">{daysAgo(app.updated_at)}</Typography>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </CardContent>
-      </Card>
+      </Grid>
 
       {/* ── Bottom row: Goals + Focus ─────────────────────────────────────── */}
       <Grid container spacing={3}>
@@ -984,7 +989,7 @@ export default function Dashboard() {
                           innerRadius={14} outerRadius={22}
                           dataKey="value" strokeWidth={0}
                         >
-                          <Cell fill="#4caf50" />
+                          <Cell fill={theme.palette.primary.main} />
                           <Cell fill="#e0e0e0" />
                         </Pie>
                       </PieChart>

@@ -323,25 +323,85 @@ function parseFromText(rawText: string): Partial<ScrapedJob> {
   }
   const bodyText = lines.slice(bodyStart).join("\n").trim();
 
-  // ── Company name (from body text) ─────────────────────────────────────────
-  const joinMatch = bodyText.match(/join the ([A-Za-z][A-Za-z0-9 &'.\-]+?) team\b/i);
-  const hiringMatch = bodyText.match(/\b([A-Za-z][A-Za-z0-9 &'.\-]+?) (?:is|are) (?:looking for|hiring|seeking)\b/i);
-  result.company_name = (joinMatch?.[1] || hiringMatch?.[1])?.trim().slice(0, 100) ?? null;
+  // ── LinkedIn structured header detection ──────────────────────────────────
+  // LinkedIn pastes follow "CompanyName\n\nPositionName\n\nCity, ST · N time ago".
+  // The optional "Company logo for, X.\n" preamble uses a single \n so it doesn't
+  // disturb the \n\n pattern below.
+  const linkedInHeaderMatch = fullText.match(
+    /([^\n]+)\n\n([^\n]+)\n\n([^\n·]+(?:,\s*[A-Z]{2,3})?)\s*·\s*\d+\s*(?:minute|hour|day|week|month)s?\s*ago/i,
+  );
 
-  // ── Position name (from body text) ────────────────────────────────────────
+  // ── Company name ──────────────────────────────────────────────────────────
+  const logoLineMatch  = fullText.match(/^Company logo for,\s*(.+?)\.?\s*$/im);
+  const joinMatch      = bodyText.match(/join the ([A-Za-z][A-Za-z0-9 &'.\-]+?) team\b/i);
+  const hiringMatch    = bodyText.match(/\b([A-Za-z][A-Za-z0-9 &'.\-]+?) (?:is|are) (?:looking for|hiring|seeking)\b/i);
+  result.company_name  = (
+    logoLineMatch?.[1] ??
+    linkedInHeaderMatch?.[1] ??
+    joinMatch?.[1] ??
+    hiringMatch?.[1]
+  )?.trim().slice(0, 100) ?? null;
+
+  // ── Position name ─────────────────────────────────────────────────────────
   const lookingMatch = bodyText.match(
     /(?:looking for|seeking|hiring)(?: an?| a \w+(?:\s+\w+)?)?\s+([A-Za-z][A-Za-z0-9 \-\/&]+?)(?:\s+to\s+|\s+who\s+|[.!])/i,
   );
-  result.position_name = lookingMatch?.[1]?.trim().slice(0, 200) ?? null;
+  result.position_name = (linkedInHeaderMatch?.[2] ?? lookingMatch?.[1])?.trim().slice(0, 200) ?? null;
 
-  // ── Description = body text before first content section header ───────────
-  // Only treat content-section keywords as boundaries — NOT pay/job type/location
-  // (those are already handled from the metadata block above)
-  const firstSectionMatch = bodyText.match(
-    /^(benefits?|responsibilities|qualifications?|requirements?|skills\s*(?:&|and)\s*experience|what you.?ll do|what we offer|about us|compensation|about the role)\s*:/im,
+  // ── Top-of-page heuristic (last resort) ───────────────────────────────────
+  // Most job listings put title and company as bare headings in the first few
+  // lines — no context words, just standalone text. When the patterns above
+  // didn't find one or both fields, scan those lines and classify them.
+  if (!result.company_name || !result.position_name) {
+    // Words that strongly suggest a line is a job title
+    const TITLE_WORDS = /\b(manager|director|engineer|developer|analyst|coordinator|designer|lead|senior|junior|associate|vp|vice\s*president|chief|officer|specialist|consultant|architect|supervisor|head|president|executive|representative|technician|administrator|assistant|intern|clerk|accountant|recruiter|nurse|therapist|teacher|instructor|writer|editor|scientist|researcher|advisor|programmer|strategist|planner|liaison|operator|mechanic|driver|chef|cook|custodian|buyer|estimator|dispatcher)\b/i;
+
+    // Lines to skip — LinkedIn UI noise, metadata, job-type labels, location hints
+    const SKIP_LINE = /^(company logo for|easy apply|save|promoted|about the job|use ai|get ai|show match|tailor|help me stand out|retry premium|full-?time|part-?time|contract|temporary|internship|remote|on-?site|hybrid)/i;
+    const LOCATION_LINE = /\b(remote|hybrid|on-?site|in-?person)\b|[A-Z][a-z]+,\s*[A-Z]{2}\b|·|\d+\s*(?:hour|day|week|month)s?\s*ago|\d+\s*applicants?/i;
+
+    const topLines = fullText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) =>
+        l.length > 1 &&
+        l.length < 80 &&
+        !SKIP_LINE.test(l) &&
+        !LOCATION_LINE.test(l),
+      )
+      .slice(0, 5);
+
+    if (topLines.length >= 2) {
+      const titleIdx = topLines.findIndex((l) => TITLE_WORDS.test(l));
+      if (titleIdx >= 0) {
+        // Classify by keyword — one line is clearly a job title
+        if (!result.position_name) result.position_name = topLines[titleIdx].slice(0, 200);
+        const compIdx = titleIdx === 0 ? 1 : 0;
+        if (!result.company_name && !TITLE_WORDS.test(topLines[compIdx])) {
+          result.company_name = topLines[compIdx].slice(0, 100);
+        }
+      } else {
+        // No title keywords — assume LinkedIn order: first line = company, second = title
+        if (!result.company_name)  result.company_name  = topLines[0].slice(0, 100);
+        if (!result.position_name) result.position_name = topLines[1].slice(0, 200);
+      }
+    } else if (topLines.length === 1 && !result.position_name) {
+      result.position_name = topLines[0].slice(0, 200);
+    }
+  }
+
+  // ── Description ───────────────────────────────────────────────────────────
+  // "About the job" is LinkedIn's section header before real content; start
+  // the description there to skip all LinkedIn UI noise above it.
+  const aboutJobMatch  = bodyText.match(/^About the job\s*\n/im);
+  const descBodyStart  = aboutJobMatch ? (aboutJobMatch.index ?? 0) + aboutJobMatch[0].length : 0;
+  const descBody       = bodyText.slice(descBodyStart).trim();
+
+  const firstSectionMatch = descBody.match(
+    /^(benefits?|responsibilities|qualifications?|requirements?|qualification requirements?|essential duties|skills\s*(?:&|and)\s*experience|what you.?ll do|what we offer|about us|compensation|about the role)\s*[:\n]/im,
   );
-  const descEnd = firstSectionMatch?.index ?? bodyText.length;
-  result.description = bodyText.slice(0, descEnd).trim().slice(0, 5000) || null;
+  const descEnd = firstSectionMatch?.index ?? descBody.length;
+  result.description = descBody.slice(0, descEnd).trim().slice(0, 5000) || null;
 
   // ── Benefits (from body text) ─────────────────────────────────────────────
   result.benefits = extractBetween(
@@ -380,7 +440,7 @@ function parseFromText(rawText: string): Partial<ScrapedJob> {
   // ── Location: "Work setting\nRemote" or "Work location\nRemote" ───────────
   const workSettingMatch = fullText.match(/^work\s+(?:setting|location)\s*\n([^\n]+)/im);
   const locInline = fullText.match(/^(?:work\s+)?location\s*:\s*(.+)$/im);
-  result.location = (workSettingMatch?.[1] ?? locInline?.[1])?.trim().slice(0, 100) ?? null;
+  result.location = (workSettingMatch?.[1] ?? locInline?.[1] ?? linkedInHeaderMatch?.[3])?.trim().slice(0, 100) ?? null;
   if (!result.location) {
     const remoteMatch = fullText.match(/\b(remote|hybrid|on-?site|in-?person)\b/i);
     result.location = remoteMatch?.[0]?.trim() ?? null;

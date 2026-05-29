@@ -33,6 +33,7 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
+import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -361,7 +362,7 @@ export default function Documents() {
         <DialogTitle>
           <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
             {previewDoc?.name}
-            <IconButton onClick={() => setPreviewDoc(null)}><DeleteIcon /></IconButton>
+            <IconButton onClick={() => setPreviewDoc(null)}><CloseIcon /></IconButton>
           </Stack>
         </DialogTitle>
         <DialogContent sx={{ p: 0, height: "75vh" }}>

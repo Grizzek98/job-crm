@@ -204,7 +204,7 @@ export default function JobSites() {
             <TextField label="Site Name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required fullWidth autoFocus />
             <TextField label="URL" value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} required fullWidth placeholder="https://linkedin.com" />
             <TextField label="Your Username" value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} fullWidth placeholder="your.email@example.com" />
-            <TextField label="Notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} fullWidth multiline rows={2} />
+            <TextField label="Notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} fullWidth multiline minRows={2} />
           </Stack>
         </DialogContent>
         <Divider />

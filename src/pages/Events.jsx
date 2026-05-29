@@ -271,7 +271,7 @@ export default function Events() {
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                 multiline
-                rows={3}
+                minRows={3}
                 fullWidth
               />
             </Stack>

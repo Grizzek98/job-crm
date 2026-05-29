@@ -333,7 +333,7 @@ export default function Companies() {
               value={form.notes}
               onChange={handleFormChange}
               multiline
-              rows={3}
+              minRows={3}
               fullWidth
             />
           </Stack>

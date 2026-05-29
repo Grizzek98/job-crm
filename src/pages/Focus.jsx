@@ -29,7 +29,7 @@ import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
-import { getFocusVideos, createFocusVideo, updateFocusVideo, deleteFocusVideo } from "../services/focusVideoService";
+import { getFocusVideos, createFocusVideo, updateFocusVideo, deleteFocusVideo, fetchYouTubeDuration } from "../services/focusVideoService";
 import { useNotify } from "../context/NotificationContext";
 import { useFocus } from "../context/FocusContext";
 import { extractYouTubeId } from "../utils/youtube";
@@ -46,6 +46,7 @@ export default function Focus() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [fetchingAll, setFetchingAll] = useState(false);
 
   useEffect(() => {
     loadVideos();
@@ -88,7 +89,18 @@ export default function Focus() {
     }
     setSaving(true);
     try {
-      const payload = { title: form.title.trim(), url: form.url.trim(), notes: form.notes.trim() || null };
+      // Fetch duration from YouTube API — best-effort, won't block save if it fails
+      const urlChanged = form.url.trim() !== editingVideo?.url;
+      const duration = (!editingVideo || urlChanged)
+        ? await fetchYouTubeDuration(form.url.trim())
+        : editingVideo.duration ?? null;
+
+      const payload = {
+        title: form.title.trim(),
+        url: form.url.trim(),
+        notes: form.notes.trim() || null,
+        duration,
+      };
       if (editingVideo) {
         const updated = await updateFocusVideo(editingVideo.id, payload);
         setVideos((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
@@ -103,6 +115,24 @@ export default function Focus() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleFetchAllDurations() {
+    const missing = videos.filter((v) => !v.duration);
+    if (missing.length === 0) { notify("All videos already have durations! 🎬", "info"); return; }
+    setFetchingAll(true);
+    let count = 0;
+    for (const v of missing) {
+      const duration = await fetchYouTubeDuration(v.url);
+      if (!duration) continue;
+      try {
+        const updated = await updateFocusVideo(v.id, { duration });
+        setVideos((prev) => prev.map((vid) => (vid.id === updated.id ? updated : vid)));
+        count++;
+      } catch { /* skip */ }
+    }
+    setFetchingAll(false);
+    notify(`Fetched durations for ${count} of ${missing.length} videos! 🎬`, "success");
   }
 
   async function handleDelete() {
@@ -173,6 +203,7 @@ export default function Focus() {
                   <TableRow>
                     <TableCell sx={{ width: 40 }} />
                     <TableCell>Title</TableCell>
+                    <TableCell>Duration</TableCell>
                     <TableCell>URL</TableCell>
                     <TableCell>Notes</TableCell>
                     <TableCell align="right">Actions</TableCell>
@@ -190,6 +221,11 @@ export default function Focus() {
                       </TableCell>
                       <TableCell>
                         <Typography fontWeight={v.is_favorite ? "bold" : "medium"}>{v.title}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {v.duration ?? "—"}
+                        </Typography>
                       </TableCell>
                       <TableCell>
                         <Tooltip title={v.url}>

@@ -50,6 +50,34 @@ export async function getSettings() {
   return data;
 }
 
+const BACKGROUNDS_BUCKET = "backgrounds";
+
+export async function uploadBackgroundImage(file, currentSettings) {
+  const ext = file.name.split(".").pop();
+  const path = `${crypto.randomUUID()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(BACKGROUNDS_BUCKET)
+    .upload(path, file);
+  if (uploadError) throw uploadError;
+
+  const newPaths = [...(currentSettings.theme_background_images ?? []), path];
+  return upsertSettings({ ...currentSettings, theme_background_images: newPaths });
+}
+
+export async function deleteBackgroundImage(path, currentSettings) {
+  await supabase.storage.from(BACKGROUNDS_BUCKET).remove([path]);
+  const newPaths = (currentSettings.theme_background_images ?? []).filter((p) => p !== path);
+  const newSelected = currentSettings.theme_background_image === path
+    ? null
+    : currentSettings.theme_background_image;
+  return upsertSettings({
+    ...currentSettings,
+    theme_background_images: newPaths,
+    theme_background_image: newSelected,
+  });
+}
+
 export async function upsertSettings(updates) {
   const {
     data: { user },

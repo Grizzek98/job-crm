@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Box,
   Button,
@@ -7,16 +7,21 @@ import {
   CircularProgress,
   Divider,
   FormControlLabel,
+  IconButton,
   Stack,
   Switch,
   TextField,
+  Tooltip,
   Typography,
   Alert,
 } from "@mui/material";
-import { upsertSettings } from "../services/settingsService";
+import { upsertSettings, uploadBackgroundImage, deleteBackgroundImage } from "../services/settingsService";
+import { supabase } from "../supabaseClient";
 import { useNotify } from "../context/NotificationContext";
 import { requestCalendarToken, clearStoredToken } from "../utils/googleAuth";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import AddPhotoAlternateIcon from "@mui/icons-material/AddPhotoAlternate";
+import CloseIcon from "@mui/icons-material/Close";
 
 const ALL_EVENT_TYPES = [
   { value: "interview", label: "Interview" },
@@ -87,11 +92,65 @@ function ColorSwatch({ colors, selected, onSelect }) {
   );
 }
 
+const MAX_BG_IMAGES = 10;
+
+function ImageSwatch({ path, publicUrl, selected, onSelect, onDelete }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Box
+      onClick={() => onSelect(path)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      sx={{
+        width: 64,
+        height: 64,
+        borderRadius: 2,
+        backgroundImage: `url(${publicUrl})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        cursor: "pointer",
+        border: selected ? "3px solid" : "3px solid transparent",
+        borderColor: selected ? "text.primary" : "transparent",
+        outline: selected ? "2px solid white" : "none",
+        outlineOffset: "-5px",
+        position: "relative",
+        flexShrink: 0,
+        transition: "transform 0.1s",
+        "&:hover": { transform: "scale(1.05)" },
+      }}
+    >
+      {hovered && (
+        <Tooltip title="Remove image">
+          <IconButton
+            size="small"
+            onClick={(e) => { e.stopPropagation(); onDelete(path); }}
+            sx={{
+              position: "absolute",
+              top: -8,
+              right: -8,
+              bgcolor: "error.main",
+              color: "white",
+              width: 20,
+              height: 20,
+              p: 0,
+              "&:hover": { bgcolor: "error.dark" },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 12 }} />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Box>
+  );
+}
+
 export default function Settings({ settings, onSettingsChange }) {
   const notify = useNotify();
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [calSaving, setCalSaving] = useState(false);
+  const [uploadingBg, setUploadingBg] = useState(false);
+  const bgFileRef = useRef(null);
 
   const calConnected = !!settings?.google_calendar_token;
 
@@ -142,9 +201,11 @@ export default function Settings({ settings, onSettingsChange }) {
         pomodoro_break_min: settings.pomodoro_break_min ?? 5,
         session_tracker_enabled: settings.session_tracker_enabled ?? true,
         session_tracker_interval_min: settings.session_tracker_interval_min ?? 30,
-        theme_primary:    settings.theme_primary    ?? "#1976d2",
-        theme_secondary:  settings.theme_secondary  ?? "#9c27b0",
-        theme_background: settings.theme_background ?? null,
+        theme_primary:           settings.theme_primary           ?? "#1976d2",
+        theme_secondary:         settings.theme_secondary         ?? "#9c27b0",
+        theme_background:        settings.theme_background        ?? null,
+        theme_background_images: settings.theme_background_images ?? [],
+        theme_background_image:  settings.theme_background_image  ?? null,
       });
     }
   }, [settings]);
@@ -157,6 +218,38 @@ export default function Settings({ settings, onSettingsChange }) {
         : [...current, type];
       return { ...f, visible_event_types: next };
     });
+  }
+
+  async function handleUploadBgImage(file) {
+    if (!file) return;
+    setUploadingBg(true);
+    try {
+      // Pass the DB-saved settings so we don't accidentally save unsaved form edits
+      const updated = await uploadBackgroundImage(file, settings);
+      onSettingsChange?.(updated);
+      setForm((f) => ({ ...f, theme_background_images: updated.theme_background_images ?? [] }));
+      notify("Background image uploaded! 🎨", "success");
+    } catch (err) {
+      notify(err.message, "error");
+    } finally {
+      setUploadingBg(false);
+      if (bgFileRef.current) bgFileRef.current.value = "";
+    }
+  }
+
+  async function handleDeleteBgImage(path) {
+    try {
+      const updated = await deleteBackgroundImage(path, settings);
+      onSettingsChange?.(updated);
+      setForm((f) => ({
+        ...f,
+        theme_background_images: updated.theme_background_images ?? [],
+        theme_background_image: f.theme_background_image === path ? null : f.theme_background_image,
+      }));
+      notify("Image removed.", "info");
+    } catch (err) {
+      notify(err.message, "error");
+    }
   }
 
   async function handleSave() {
@@ -311,7 +404,7 @@ export default function Settings({ settings, onSettingsChange }) {
         {/* Theme */}
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>Theme Colors</Typography>
+            <Typography variant="h6" gutterBottom>Theme</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Pick your vibe. Changes apply after saving.
             </Typography>
@@ -333,15 +426,72 @@ export default function Settings({ settings, onSettingsChange }) {
                 />
               </Box>
               <Box>
-                <Typography variant="body2" fontWeight="medium" sx={{ mb: 1 }}>Page Background</Typography>
+                <Typography variant="body2" fontWeight="medium" sx={{ mb: 1 }}>Page Background Color</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-                  Default uses MUI's standard background.
+                  Selecting a color clears any background image.
                 </Typography>
                 <ColorSwatch
                   colors={BACKGROUND_COLORS}
-                  selected={form.theme_background}
-                  onSelect={(v) => setForm((f) => ({ ...f, theme_background: v }))}
+                  selected={form.theme_background_image ? null : form.theme_background}
+                  onSelect={(v) => setForm((f) => ({ ...f, theme_background: v, theme_background_image: null }))}
                 />
+              </Box>
+              <Box>
+                <Typography variant="body2" fontWeight="medium" sx={{ mb: 1 }}>Background Image</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                  Upload up to {MAX_BG_IMAGES} images. Click one to select it as your background — it replaces the color above.
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+                  {(form.theme_background_images ?? []).map((path) => {
+                    const publicUrl = supabase.storage.from("backgrounds").getPublicUrl(path).data.publicUrl;
+                    return (
+                      <ImageSwatch
+                        key={path}
+                        path={path}
+                        publicUrl={publicUrl}
+                        selected={form.theme_background_image === path}
+                        onSelect={(p) => setForm((f) => ({ ...f, theme_background_image: p, theme_background: null }))}
+                        onDelete={handleDeleteBgImage}
+                      />
+                    );
+                  })}
+
+                  {/* Upload tile */}
+                  {(form.theme_background_images ?? []).length < MAX_BG_IMAGES && (
+                    <Tooltip title="Upload a background image">
+                      <Box
+                        onClick={() => !uploadingBg && bgFileRef.current?.click()}
+                        sx={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: 2,
+                          border: "2px dashed",
+                          borderColor: "divider",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: uploadingBg ? "wait" : "pointer",
+                          flexShrink: 0,
+                          transition: "border-color 0.15s",
+                          "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" },
+                        }}
+                      >
+                        {uploadingBg
+                          ? <CircularProgress size={22} />
+                          : <AddPhotoAlternateIcon color="action" />}
+                      </Box>
+                    </Tooltip>
+                  )}
+
+                  {/* Hidden file input */}
+                  <input
+                    ref={bgFileRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={(e) => handleUploadBgImage(e.target.files?.[0])}
+                  />
+                </Stack>
               </Box>
             </Stack>
           </CardContent>

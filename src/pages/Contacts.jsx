@@ -342,7 +342,7 @@ export default function Contacts() {
               value={form.notes}
               onChange={handleFormChange}
               multiline
-              rows={3}
+              minRows={3}
               fullWidth
             />
           </Stack>

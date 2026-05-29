@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Grid,
   Typography,
+  useTheme,
 } from "@mui/material";
 import {
   PieChart,
@@ -29,18 +30,6 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 dayjs.extend(isoWeek);
 
-const STATUS_COLORS = {
-  applied: "#1976d2",
-  interviewing: "#7b1fa2",
-  offered: "#2e7d32",
-  accepted: "#1b5e20",
-  declined: "#f59e0b",
-  rejected: "#c62828",
-  withdrawn: "#78909c",
-  ghosted: "#90a4ae",
-};
-
-const TYPE_COLORS = ["#1976d2", "#7b1fa2", "#00796b", "#388e3c", "#e65100"];
 
 function ChartCard({ title, children, loading }) {
   return (
@@ -58,7 +47,29 @@ function ChartCard({ title, children, loading }) {
 }
 
 export default function Stats() {
+  const theme = useTheme();
   const notify = useNotify();
+
+  // Type-pie colors derived from theme so they shift with the user's palette
+  const TYPE_COLORS = [
+    theme.palette.primary.main,
+    theme.palette.secondary.main,
+    theme.palette.primary.dark,
+    theme.palette.secondary.dark,
+    theme.palette.primary.light,
+  ];
+
+  // Status colors — applied/interviewing follow theme; the rest are semantic
+  const STATUS_COLORS = {
+    applied:      theme.palette.primary.main,
+    interviewing: theme.palette.secondary.main,
+    offered:      "#2e7d32",
+    accepted:     "#1b5e20",
+    declined:     "#f59e0b",
+    rejected:     "#c62828",
+    withdrawn:    "#78909c",
+    ghosted:      "#90a4ae",
+  };
   const [loading, setLoading] = useState(true);
   const [statusData, setStatusData] = useState([]);
   const [typeData, setTypeData] = useState([]);
@@ -203,7 +214,7 @@ export default function Stats() {
                   <XAxis type="number" />
                   <YAxis dataKey="stage" type="category" width={90} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#1976d2" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="count" fill={theme.palette.primary.main} radius={[0, 4, 4, 0]}>
                     <LabelList dataKey="rate" position="right" style={{ fontSize: 12 }} />
                   </Bar>
                 </BarChart>
@@ -230,7 +241,7 @@ export default function Stats() {
                   <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#7b1fa2" radius={[4, 4, 0, 0]} name="Applications" />
+                  <Bar dataKey="count" fill={theme.palette.primary.main} radius={[4, 4, 0, 0]} name="Applications" />
                 </BarChart>
               </ResponsiveContainer>
             )}

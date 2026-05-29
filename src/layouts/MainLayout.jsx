@@ -3,6 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import {
   Box,
+  Container,
   Drawer,
   AppBar,
   Toolbar,
@@ -26,6 +27,7 @@ import {
   InputAdornment,
   CircularProgress,
   TextField,
+  GlobalStyles,
 } from "@mui/material";
 import DashboardIcon       from "@mui/icons-material/Dashboard";
 import BarChartIcon        from "@mui/icons-material/BarChart";
@@ -53,34 +55,36 @@ import ChevronRightIcon    from "@mui/icons-material/ChevronRight";
 import VolumeUpIcon        from "@mui/icons-material/VolumeUp";
 import VolumeDownIcon      from "@mui/icons-material/VolumeDown";
 import VolumeOffIcon       from "@mui/icons-material/VolumeOff";
-import SearchIcon          from "@mui/icons-material/Search";
-import confetti            from "canvas-confetti";
+import SearchIcon           from "@mui/icons-material/Search";
+import StickyNote2Icon      from "@mui/icons-material/StickyNote2";
+import confetti             from "canvas-confetti";
 import { NotificationProvider } from "../context/NotificationContext";
 import { globalSearch } from "../services/searchService";
 import { FocusProvider, useFocus } from "../context/FocusContext";
 import { extractYouTubeId } from "../utils/youtube";
+import NotesPanel from "../components/NotesPanel";
 
 const DRAWER_WIDTH           = 220;
 const DRAWER_COLLAPSED_WIDTH = 60;
 const SIDEBAR_STORAGE_KEY    = "sidebarCollapsed";
 
 const group1 = [
-  { label: "Dashboard",  path: "/",        icon: <DashboardIcon /> },
-  { label: "Job Stats",  path: "/stats",   icon: <BarChartIcon /> },
-  { label: "CRM",        path: "/crm",     icon: <TableChartIcon /> },
-  { label: "Timeline",   path: "/timeline",icon: <CalendarMonthIcon /> },
-  { label: "Add Job",    path: "/add-job", icon: <AddBoxIcon /> },
+  { label: "Dashboard",   path: "/",          icon: <DashboardIcon /> },
+  { label: "Job Stats",   path: "/stats",     icon: <BarChartIcon /> },
+  { label: "CRM",         path: "/crm",       icon: <TableChartIcon /> },
+  { label: "Timeline",    path: "/timeline",  icon: <CalendarMonthIcon /> },
+  { label: "Job Sites",   path: "/job-sites", icon: <OpenInNewIcon /> },
+  { label: "Add Job",     path: "/add-job",   icon: <AddBoxIcon /> },
+  { label: "Focus Tools", path: "/focus",     icon: <SelfImprovementIcon /> },
 ];
 
 const group2 = [
-  { label: "Companies",    path: "/companies", icon: <BusinessIcon /> },
-  { label: "Positions",    path: "/positions", icon: <WorkIcon /> },
-  { label: "Contacts",     path: "/contacts",  icon: <PeopleIcon /> },
-  { label: "Documents",    path: "/documents", icon: <DescriptionIcon /> },
-  { label: "Events",       path: "/events",    icon: <EventIcon /> },
-  { label: "Focus Tools",  path: "/focus",     icon: <SelfImprovementIcon /> },
-  { label: "Job Sites",    path: "/job-sites", icon: <OpenInNewIcon /> },
-  { label: "Settings",     path: "/settings",  icon: <SettingsIcon /> },
+  { label: "Companies", path: "/companies", icon: <BusinessIcon /> },
+  { label: "Positions", path: "/positions", icon: <WorkIcon /> },
+  { label: "Contacts",  path: "/contacts",  icon: <PeopleIcon /> },
+  { label: "Documents", path: "/documents", icon: <DescriptionIcon /> },
+  { label: "Events",    path: "/events",    icon: <EventIcon /> },
+  { label: "Settings",  path: "/settings",  icon: <SettingsIcon /> },
 ];
 
 // ─── Nav group ───────────────────────────────────────────────────────────────
@@ -323,19 +327,52 @@ function SidebarSearch({ collapsed, onExpand }) {
 }
 
 // ─── YouTube mini-player (IFrame Player API for volume control) ───────────────
+const YT_WIDTH    = 220;
+const YT_BAR_H    = 32;  // drag bar height in px
+const YT_VIDEO_H  = 130; // iframe height in px
+
 function YouTubePlayer() {
+  const theme = useTheme();
   const { currentVideo, setCurrentVideo } = useFocus();
-  const playerRef  = useRef(null); // YT.Player instance
-  const wrapperRef = useRef(null); // DOM container we own
-  const [volume, setVolume] = useState(80);
-  const [muted,  setMuted]  = useState(false);
-  const volumeRef = useRef(80); // stable ref for API callbacks
+  const playerRef  = useRef(null);
+  const wrapperRef = useRef(null);
+  const [volume,   setVolume]   = useState(80);
+  const [muted,    setMuted]    = useState(false);
+  const volumeRef               = useRef(80);
+
+  // Drag — start bottom-right
+  const [pos,      setPos]      = useState(() => ({
+    x: window.innerWidth  - YT_WIDTH - 16,
+    y: window.innerHeight - YT_BAR_H - YT_VIDEO_H - 46, // bar + video + volume row
+  }));
+  const [dragging, setDragging] = useState(false);
+  const dragStart               = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+
+  function onDragStart(e) {
+    setDragging(true);
+    dragStart.current = { mx: e.clientX, my: e.clientY, px: pos.x, py: pos.y };
+  }
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => setPos({
+      x: Math.max(0, dragStart.current.px + e.clientX - dragStart.current.mx),
+      y: Math.max(0, dragStart.current.py + e.clientY - dragStart.current.my),
+    });
+    const onUp = () => setDragging(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup",   onUp);
+    };
+  }, [dragging]);
 
   // Inject the IFrame API script once; destroy player on unmount
   useEffect(() => {
     if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-      const tag  = document.createElement("script");
-      tag.src    = "https://www.youtube.com/iframe_api";
+      const tag = document.createElement("script");
+      tag.src   = "https://www.youtube.com/iframe_api";
       document.head.appendChild(tag);
     }
     return () => {
@@ -344,7 +381,7 @@ function YouTubePlayer() {
     };
   }, []);
 
-  // Create player or load a new video when currentVideo changes
+  // Create or swap the video when currentVideo changes
   useEffect(() => {
     if (!currentVideo) {
       try { playerRef.current?.stopVideo(); } catch { /* ignore */ }
@@ -354,94 +391,122 @@ function YouTubePlayer() {
     if (!videoId) return;
 
     function go() {
-      // If the player already exists, just swap the video — no re-creation needed
       if (playerRef.current) {
-        try { playerRef.current.loadVideoById(videoId); return; } catch { /* fall through to recreate */ }
+        try { playerRef.current.loadVideoById(videoId); return; } catch { /* fall through */ }
       }
-      // First load (or after an error): clear wrapper and mount a fresh inner div
       if (!wrapperRef.current) return;
       wrapperRef.current.innerHTML = "";
       const target = document.createElement("div");
       wrapperRef.current.appendChild(target);
       playerRef.current = new window.YT.Player(target, {
-        height: "130",
-        width:  "220",
+        height: String(YT_VIDEO_H),
+        width:  String(YT_WIDTH),
         videoId,
         playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
-        events: {
-          onReady: (e) => { e.target.setVolume(volumeRef.current); },
-        },
+        events: { onReady: (e) => e.target.setVolume(volumeRef.current) },
       });
     }
 
     if (window.YT?.Player) {
       go();
     } else {
-      // API not loaded yet — queue up behind any existing callback
       const prev = window.onYouTubeIframeAPIReady;
       window.onYouTubeIframeAPIReady = () => { prev?.(); go(); };
     }
   }, [currentVideo]);
 
-  // Keep volume / mute in sync with the live player
+  // Sync volume / mute to the live player
   useEffect(() => {
     volumeRef.current = volume;
     try {
       if (!playerRef.current) return;
       playerRef.current.setVolume(volume);
       muted ? playerRef.current.mute() : playerRef.current.unMute();
-    } catch { /* player not ready yet — onReady will pick up volumeRef */ }
+    } catch { /* not ready yet — onReady picks up volumeRef */ }
   }, [volume, muted]);
 
-  return (
-    <Paper
-      elevation={6}
-      sx={{
-        position: "fixed",
-        bottom: 16,
-        right: 16,
-        zIndex: 1300,
-        width: 220,
-        overflow: "hidden",
-        borderRadius: 2,
-        display: currentVideo ? "flex" : "none",
-        flexDirection: "column",
-      }}
-    >
-      {/* IFrame API replaces contents of this div with an <iframe> */}
-      <Box ref={wrapperRef} sx={{ width: 220, height: 130, flexShrink: 0, bgcolor: "black" }} />
+  if (!currentVideo) return null;
 
-      {/* Title + stop */}
-      <Box sx={{ px: 1, pt: 0.5, pb: 0.25, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Typography variant="caption" noWrap sx={{ maxWidth: 150 }}>
-          {currentVideo?.title ?? ""}
+  return (
+    <>
+      {/* ── Drag bar: completely separate fixed element, sits above the player ── */}
+      <Box
+        onMouseDown={onDragStart}
+        sx={{
+          position: "fixed",
+          top:  pos.y,
+          left: pos.x,
+          width: YT_WIDTH,
+          height: YT_BAR_H,
+          zIndex: 1301,
+          display: "flex",
+          alignItems: "center",
+          gap: 0.5,
+          px: 0.5,
+          bgcolor: theme.palette.primary.main,
+          color: "white",
+          borderRadius: "8px 8px 0 0",
+          cursor: "grab",
+          userSelect: "none",
+        }}
+      >
+        <DragIndicatorIcon sx={{ fontSize: 16, opacity: 0.8, flexShrink: 0 }} />
+        <Typography variant="caption" noWrap sx={{ flex: 1, fontWeight: 500 }}>
+          {currentVideo.title}
         </Typography>
         <Tooltip title="Stop">
-          <IconButton size="small" onClick={() => setCurrentVideo(null)}>
-            <CloseIcon fontSize="small" />
+          <IconButton
+            size="small"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setCurrentVideo(null)}
+            sx={{ color: "white", p: 0.25, "&:hover": { bgcolor: "rgba(255,255,255,0.2)" } }}
+          >
+            <CloseIcon sx={{ fontSize: 14 }} />
           </IconButton>
         </Tooltip>
       </Box>
 
-      {/* Volume row */}
-      <Box sx={{ px: 1, pb: 0.75, display: "flex", alignItems: "center", gap: 0.5 }}>
-        <IconButton size="small" onClick={() => setMuted((m) => !m)} sx={{ p: 0.25 }}>
-          {muted || volume === 0
-            ? <VolumeOffIcon  fontSize="small" />
-            : volume < 50
-            ? <VolumeDownIcon fontSize="small" />
-            : <VolumeUpIcon   fontSize="small" />}
-        </IconButton>
-        <Slider
-          size="small"
-          value={muted ? 0 : volume}
-          onChange={(_, v) => { setMuted(false); setVolume(v); }}
-          min={0}
-          max={100}
-          sx={{ flexGrow: 1, mx: 0.5 }}
-        />
-      </Box>
-    </Paper>
+      {/* ── Player body: separate Paper containing only the iframe + volume ── */}
+      <Paper
+        elevation={6}
+        sx={{
+          position: "fixed",
+          top:  pos.y + YT_BAR_H,
+          left: pos.x,
+          width: YT_WIDTH,
+          zIndex: 1300,
+          borderRadius: "0 0 8px 8px",
+          overflow: "hidden",
+        }}
+      >
+        {/* YouTube IFrame API mounts the iframe inside this div */}
+        <Box ref={wrapperRef} sx={{ width: YT_WIDTH, height: YT_VIDEO_H, bgcolor: "black" }} />
+
+        {/* Volume row */}
+        <Box sx={{ px: 1, py: 0.75, display: "flex", alignItems: "center", gap: 0.5 }}>
+          <IconButton size="small" onClick={() => setMuted((m) => !m)} sx={{ p: 0.25 }}>
+            {muted || volume === 0
+              ? <VolumeOffIcon  fontSize="small" />
+              : volume < 50
+              ? <VolumeDownIcon fontSize="small" />
+              : <VolumeUpIcon   fontSize="small" />}
+          </IconButton>
+          <Slider
+            size="small"
+            value={muted ? 0 : volume}
+            onChange={(_, v) => { setMuted(false); setVolume(v); }}
+            min={0}
+            max={100}
+            sx={{ flexGrow: 1, mx: 0.5 }}
+          />
+        </Box>
+      </Paper>
+
+      {/* Cursor overlay while dragging */}
+      {dragging && (
+        <Box sx={{ position: "fixed", inset: 0, zIndex: 9999, cursor: "grabbing" }} />
+      )}
+    </>
   );
 }
 
@@ -476,7 +541,7 @@ function PomodoroTimer() {
   const theme = useTheme();
   const {
     timerVisible, timerPhase, timerRunning, timerSecondsLeft,
-    pomodoroCount, startPause, resetTimer,
+    pomodoroCount, startPause, resetTimer, toggleTimer,
   } = useFocus();
 
   const [pos, setPos]           = useState({ x: 16, y: null });
@@ -572,13 +637,25 @@ function PomodoroTimer() {
           <Typography variant="caption" fontWeight="bold">
             {timerPhase === "work" ? "Work" : "Break"}
           </Typography>
-          {pomodoroCount > 0 && (
-            <Chip
-              label={pomodoroCount}
-              size="small"
-              sx={{ height: 18, fontSize: 10, bgcolor: "rgba(255,255,255,0.3)", color: "white" }}
-            />
-          )}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            {pomodoroCount > 0 && (
+              <Chip
+                label={pomodoroCount}
+                size="small"
+                sx={{ height: 18, fontSize: 10, bgcolor: "rgba(255,255,255,0.3)", color: "white" }}
+              />
+            )}
+            <Tooltip title="Close timer">
+              <IconButton
+                size="small"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={toggleTimer}
+                sx={{ p: 0.25, color: "white", "&:hover": { bgcolor: "rgba(255,255,255,0.2)" } }}
+              >
+                <CloseIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
         </Box>
 
         {/* Countdown */}
@@ -619,8 +696,24 @@ function PomodoroTimer() {
 function SessionTracker({ settings }) {
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMsg,  setSnackMsg]  = useState("");
-  const minutesRef   = useRef(0);
-  const nextAlertRef = useRef(null);
+  const minutesRef    = useRef(0);
+  const nextAlertRef  = useRef(null);
+  const pendingNotif  = useRef(false); // true = threshold crossed while tab was hidden
+
+  function buildMsg(minutes) {
+    const msgs = [
+      `You've been job hunting for ${minutes} minutes today! Amazing dedication! 🔥`,
+      `${minutes} minutes of job searching — you're crushing it! 💪`,
+      `Wow, ${minutes} minutes in! You're an absolute rockstar. Keep going! ⭐`,
+    ];
+    return msgs[Math.floor(Math.random() * msgs.length)];
+  }
+
+  function showToast() {
+    setSnackMsg(buildMsg(minutesRef.current));
+    setSnackOpen(true);
+    pendingNotif.current = false;
+  }
 
   useEffect(() => {
     if (!settings?.session_tracker_enabled) return;
@@ -637,18 +730,29 @@ function SessionTracker({ settings }) {
 
       if (minutesRef.current >= nextAlertRef.current) {
         nextAlertRef.current += intervalMin;
-        const msgs = [
-          `You've been job hunting for ${minutesRef.current} minutes today! Amazing dedication! 🔥`,
-          `${minutesRef.current} minutes of job searching — you're crushing it! 💪`,
-          `Wow, ${minutesRef.current} minutes in! You're an absolute rockstar. Keep going! ⭐`,
-        ];
-        setSnackMsg(msgs[Math.floor(Math.random() * msgs.length)]);
-        setSnackOpen(true);
+        if (document.hidden) {
+          // Tab isn't visible — mark it pending so we show it when they return
+          pendingNotif.current = true;
+        } else {
+          showToast();
+        }
       }
     }, 60_000);
 
     return () => clearInterval(tick);
-  }, [settings?.session_tracker_enabled, settings?.session_tracker_interval_min]);
+  }, [settings?.session_tracker_enabled, settings?.session_tracker_interval_min]); // eslint-disable-line
+
+  // When the user switches back to this tab, show any pending notification
+  useEffect(() => {
+    if (!settings?.session_tracker_enabled) return;
+    function handleVisibilityChange() {
+      if (!document.hidden && pendingNotif.current) {
+        showToast();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [settings?.session_tracker_enabled]); // eslint-disable-line
 
   return (
     <Snackbar
@@ -692,6 +796,35 @@ function FocusTimerToggle({ collapsed }) {
   );
 }
 
+// ─── Notes panel toggle (sidebar button) ─────────────────────────────────────
+function NotesToggle({ collapsed, notesOpen, onToggle }) {
+  return (
+    <List sx={{ pt: 0 }}>
+      <ListItem disablePadding>
+        <Tooltip title={collapsed ? "Notes" : ""} placement="right" arrow>
+          <ListItemButton
+            onClick={onToggle}
+            sx={{
+              mx: collapsed ? 0.5 : 1,
+              borderRadius: 1,
+              justifyContent: collapsed ? "center" : "flex-start",
+              minHeight: 44,
+              bgcolor: notesOpen ? "primary.light" : undefined,
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: collapsed ? 0 : 36, justifyContent: "center" }}>
+              <StickyNote2Icon color={notesOpen ? "primary" : "inherit"} />
+            </ListItemIcon>
+            {!collapsed && (
+              <ListItemText primary="Notes" slotProps={{ primary: { fontSize: 14 } }} />
+            )}
+          </ListItemButton>
+        </Tooltip>
+      </ListItem>
+    </List>
+  );
+}
+
 // ─── Main layout ──────────────────────────────────────────────────────────────
 export default function MainLayout({ settings, onSettingsChange }) {
   const theme    = useTheme();
@@ -712,6 +845,52 @@ export default function MainLayout({ settings, onSettingsChange }) {
     });
   }
 
+  // Notes panel state
+  const [notesOpen,  setNotesOpen]  = useState(() => localStorage.getItem("notesOpen") === "true");
+  const [notesWidth, setNotesWidth] = useState(() => parseInt(localStorage.getItem("notesWidth") ?? "320", 10));
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef({ startX: 0, startWidth: 0 });
+
+  function toggleNotes() {
+    setNotesOpen((o) => {
+      const next = !o;
+      localStorage.setItem("notesOpen", String(next));
+      return next;
+    });
+  }
+
+  function handleDragStart(e) {
+    setIsDragging(true);
+    dragRef.current = { startX: e.clientX, startWidth: notesWidth };
+    e.preventDefault();
+  }
+
+  // Attach/detach drag listeners only while dragging
+  useEffect(() => {
+    if (!isDragging) return;
+    function onMove(e) {
+      const delta = dragRef.current.startX - e.clientX; // drag left → wider panel
+      const newWidth = Math.max(200, Math.min(window.innerWidth * 0.75, dragRef.current.startWidth + delta));
+      setNotesWidth(newWidth);
+    }
+    function onUp() {
+      setIsDragging(false);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup",   onUp);
+    };
+  }, [isDragging]);
+
+  // Persist width to localStorage after drag ends
+  useEffect(() => {
+    if (!isDragging) {
+      localStorage.setItem("notesWidth", String(notesWidth));
+    }
+  }, [isDragging]); // eslint-disable-line
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/");
@@ -719,25 +898,33 @@ export default function MainLayout({ settings, onSettingsChange }) {
 
   const drawerWidth = collapsed ? DRAWER_COLLAPSED_WIDTH : DRAWER_WIDTH;
 
+  // Background image — derive public URL from selected path (null = no image)
+  const bgImagePath = settings?.theme_background_image ?? null;
+  const bgImageUrl  = bgImagePath
+    ? supabase.storage.from("backgrounds").getPublicUrl(bgImagePath).data.publicUrl
+    : null;
+
   const drawerContent = (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflowX: "hidden" }}>
-      {/* Logo */}
-      <Toolbar
-        sx={{
-          minHeight: 56,
-          justifyContent: collapsed ? "center" : "flex-start",
-          px: collapsed ? 0 : 2,
-        }}
-      >
-        <WorkIcon sx={{ color: "primary.main", mr: collapsed ? 0 : 1, flexShrink: 0 }} />
-        {!collapsed && (
-          <Typography variant="subtitle1" fontWeight="bold" noWrap>
-            Job CRM
-          </Typography>
-        )}
-      </Toolbar>
+      {/* Logo — expanded only */}
+      {!collapsed && (
+        <>
+          <Toolbar sx={{ minHeight: 56, justifyContent: "flex-start", px: 2 }}>
+            <WorkIcon sx={{ color: "primary.main", mr: 1, flexShrink: 0 }} />
+            <Typography variant="subtitle1" fontWeight="bold" noWrap>Job CRM</Typography>
+          </Toolbar>
+          <Divider />
+        </>
+      )}
 
-      <Divider />
+      {/* Collapse/expand toggle — below logo when expanded, topmost when collapsed */}
+      <Box sx={{ display: "flex", justifyContent: collapsed ? "center" : "flex-end", px: 1, py: 0.5 }}>
+        <Tooltip title={collapsed ? "Expand sidebar" : "Collapse sidebar"} placement="right">
+          <IconButton size="small" onClick={toggleCollapsed}>
+            {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+          </IconButton>
+        </Tooltip>
+      </Box>
 
       {/* Global search */}
       <SidebarSearch collapsed={collapsed} onExpand={() => setCollapsed(false)} />
@@ -753,6 +940,7 @@ export default function MainLayout({ settings, onSettingsChange }) {
           </Typography>
         )}
         <NavGroup items={group1} onClose={() => setMobileOpen(false)} collapsed={collapsed} />
+        <NotesToggle collapsed={collapsed} notesOpen={notesOpen} onToggle={toggleNotes} />
       </Box>
 
       <Divider sx={{ mx: collapsed ? 0 : 1 }} />
@@ -798,21 +986,23 @@ export default function MainLayout({ settings, onSettingsChange }) {
         </ListItem>
       </List>
 
-      {/* Collapse toggle */}
-      <Divider />
-      <Box sx={{ display: "flex", justifyContent: "center", py: 0.75 }}>
-        <Tooltip title={collapsed ? "Expand sidebar" : "Collapse sidebar"} placement="right">
-          <IconButton size="small" onClick={toggleCollapsed}>
-            {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
-          </IconButton>
-        </Tooltip>
-      </Box>
     </Box>
   );
 
   return (
     <NotificationProvider>
       <FocusProvider settings={settings}>
+        {/* Inject body-level background image when one is selected */}
+        {bgImageUrl && (
+          <GlobalStyles styles={{
+            body: {
+              backgroundImage: `url(${bgImageUrl})`,
+              backgroundSize: "cover",
+              backgroundAttachment: "fixed",
+              backgroundPosition: "center",
+            },
+          }} />
+        )}
         <Box sx={{ display: "flex" }}>
           {/* Mobile top bar */}
           {isMobile && (
@@ -851,15 +1041,71 @@ export default function MainLayout({ settings, onSettingsChange }) {
             component="main"
             sx={{
               flexGrow: 1,
+              minWidth: 0,
               p: 3,
               mt: isMobile ? 8 : 0,
               minHeight: "100vh",
-              bgcolor: "background.default",
+              bgcolor: bgImageUrl ? "transparent" : "background.default",
               transition: "margin 0.2s ease",
             }}
           >
-            <Outlet />
+            <Container maxWidth="xl" disableGutters>
+              <Outlet />
+            </Container>
           </Box>
+
+          {/* Notes panel — desktop (inline, resizable) */}
+          {notesOpen && !isMobile && (
+            <>
+              {/* Drag handle */}
+              <Box
+                onMouseDown={handleDragStart}
+                sx={{
+                  width: 5,
+                  flexShrink: 0,
+                  cursor: "col-resize",
+                  bgcolor: isDragging ? "primary.main" : "divider",
+                  transition: "background-color 0.15s",
+                  "&:hover": { bgcolor: "primary.main" },
+                  zIndex: 10,
+                }}
+              />
+              {/* Panel */}
+              <Box
+                sx={{
+                  width: notesWidth,
+                  flexShrink: 0,
+                  height: "100vh",
+                  position: "sticky",
+                  top: 0,
+                  borderLeft: "1px solid",
+                  borderColor: "divider",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                }}
+              >
+                <NotesPanel onClose={toggleNotes} />
+              </Box>
+            </>
+          )}
+
+          {/* Notes panel — mobile (overlay drawer from right) */}
+          {isMobile && (
+            <Drawer
+              anchor="right"
+              open={notesOpen}
+              onClose={toggleNotes}
+              sx={{ "& .MuiDrawer-paper": { width: "85vw", maxWidth: 400 } }}
+            >
+              <NotesPanel onClose={toggleNotes} />
+            </Drawer>
+          )}
+
+          {/* Cursor overlay during resize drag — keeps col-resize cursor everywhere */}
+          {isDragging && (
+            <Box sx={{ position: "fixed", inset: 0, zIndex: 9999, cursor: "col-resize" }} />
+          )}
 
           {/* Floating overlays */}
           <YouTubePlayer />

@@ -17,16 +17,13 @@ import {
   MenuItem,
   Select,
   Stack,
-  Tab,
-  Tabs,
   TextField,
   Typography,
 } from "@mui/material";
 import { LocalizationProvider, DatePicker } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
-import SearchIcon from "@mui/icons-material/Search";
-import { scrapeJob, parseJobText } from "../services/scraperService";
+import { parseJobText } from "../services/scraperService";
 import { getCompanies, createCompany } from "../services/companyService";
 import { createPosition } from "../services/positionService";
 import { useNotify } from "../context/NotificationContext";
@@ -77,8 +74,6 @@ export default function AddJob() {
   const notify = useNotify();
   const navigate = useNavigate();
 
-  const [inputMode, setInputMode] = useState("url"); // "url" | "text"
-  const [url, setUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
   const [scraping, setScraping] = useState(false);
   const [scraped, setScraped] = useState(null); // raw scraped data
@@ -95,49 +90,6 @@ export default function AddJob() {
       setCompaniesLoaded(true);
     } catch {
       // Non-fatal
-    }
-  }
-
-  async function handleScrape() {
-    if (!url.trim()) return;
-    setScraping(true);
-    setScrapeError(null);
-    setScraped(null);
-    await loadCompanies();
-    try {
-      const data = await scrapeJob(url.trim());
-      setScraped(data);
-
-      // Try to match existing company
-      const matchedCompany = companies.find(
-        (c) => c.name.toLowerCase() === (data.company_name ?? "").toLowerCase(),
-      );
-
-      setForm({
-        company_name: data.company_name ?? "",
-        company_id: matchedCompany?.id ?? null,
-        position_name: data.position_name ?? "",
-        status: "active",
-        type: data.position_type ?? "",
-        location: data.location ?? "",
-        pay_min: data.pay_min ?? "",
-        pay_max: data.pay_max ?? "",
-        pay_type: data.pay_type ?? "",
-        description: data.description ?? "",
-        requirements: data.requirements ?? "",
-        benefits: data.benefits ?? "",
-        travel_requirements: data.travel_requirements ?? "",
-        notes: "",
-        url_listing: data.url_listing ?? url.trim(),
-        url_application: data.url_application ?? "",
-        posted_at: data.posted_at ? dayjs(data.posted_at) : null,
-      });
-    } catch (err) {
-      setScrapeError(err.message ?? "Scraping failed. You can fill in the form manually.");
-      await loadCompanies();
-      setForm((f) => ({ ...f, url_listing: url.trim() }));
-    } finally {
-      setScraping(false);
     }
   }
 
@@ -186,7 +138,6 @@ export default function AddJob() {
   }
 
   function clear() {
-    setUrl("");
     setPastedText("");
     setScraped(null);
     setScrapeError(null);
@@ -236,7 +187,7 @@ export default function AddJob() {
 
       await createPosition(posPayload, notify, !!scraped);
       notify("Position saved! 🎉", "success");
-      navigate("/positions");
+      navigate("/crm");
     } catch (err) {
       notify(err.message, "error");
     } finally {
@@ -253,7 +204,7 @@ export default function AddJob() {
           <Box>
             <Typography variant="h5" fontWeight="bold">Add Job</Typography>
             <Typography variant="body2" color="text.secondary">
-              Scrape from a URL, or paste the job description text directly 🤖
+              Copy a job listing from LinkedIn, Indeed, or anywhere else and paste it below — we'll pull out what we can 🤖
             </Typography>
           </Box>
           {showForm && (
@@ -261,61 +212,28 @@ export default function AddJob() {
           )}
         </Stack>
 
-        {/* Input card — URL or Paste Text */}
+        {/* Input card — paste text */}
         <Card sx={{ mb: 3 }}>
-          <Tabs
-            value={inputMode}
-            onChange={(_, v) => { setInputMode(v); clear(); }}
-            sx={{ px: 2, borderBottom: 1, borderColor: "divider" }}
-          >
-            <Tab value="url" label="🔗 From URL" />
-            <Tab value="text" label="📋 Paste Text" />
-          </Tabs>
           <CardContent>
-            {inputMode === "url" ? (
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                <TextField
-                  fullWidth
-                  label="Job listing URL"
-                  placeholder="https://jobs.company.com/posting/..."
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleScrape()}
-                  slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> } }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleScrape}
-                  disabled={scraping || !url.trim()}
-                  sx={{ whiteSpace: "nowrap", minWidth: 120 }}
-                >
-                  {scraping ? <CircularProgress size={20} color="inherit" /> : "Scrape Job"}
-                </Button>
-              </Stack>
-            ) : (
-              <Stack spacing={2}>
-                <Typography variant="body2" color="text.secondary">
-                  Copy the full job description from Indeed, LinkedIn, or anywhere else and paste it below. We'll pull out what we can. 🤖
-                </Typography>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={10}
-                  label="Paste job description"
-                  placeholder={"Full job description\n\nJoin the Acme Corp team…"}
-                  value={pastedText}
-                  onChange={(e) => setPastedText(e.target.value)}
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleParseText}
-                  disabled={scraping || !pastedText.trim()}
-                  sx={{ alignSelf: "flex-start", minWidth: 140 }}
-                >
-                  {scraping ? <CircularProgress size={20} color="inherit" /> : "Parse Text"}
-                </Button>
-              </Stack>
-            )}
+            <Stack spacing={2}>
+              <TextField
+                fullWidth
+                multiline
+                rows={10}
+                label="Paste job description"
+                placeholder={"Full job description\n\nJoin the Acme Corp team…"}
+                value={pastedText}
+                onChange={(e) => setPastedText(e.target.value)}
+              />
+              <Button
+                variant="contained"
+                onClick={handleParseText}
+                disabled={scraping || !pastedText.trim()}
+                sx={{ alignSelf: "flex-start", minWidth: 140 }}
+              >
+                {scraping ? <CircularProgress size={20} color="inherit" /> : "Parse Text"}
+              </Button>
+            </Stack>
             {scraping && <LinearProgress sx={{ mt: 2 }} />}
           </CardContent>
         </Card>
@@ -366,12 +284,11 @@ export default function AddJob() {
                     ✏️ Review & Save
                   </Typography>
                   <Stack spacing={2}>
-                    {/* Company autocomplete */}
                     <Autocomplete
                       freeSolo
                       options={companies}
                       getOptionLabel={(o) => (typeof o === "string" ? o : o.name)}
-                      inputValue={form.company_name}
+                      value={form.company_name || null}
                       onInputChange={(_, val) => {
                         setField("company_name", val);
                         setField("company_id", null);
@@ -380,6 +297,9 @@ export default function AddJob() {
                         if (val && typeof val === "object") {
                           setField("company_name", val.name);
                           setField("company_id", val.id);
+                        } else if (typeof val === "string") {
+                          setField("company_name", val);
+                          setField("company_id", null);
                         }
                       }}
                       renderInput={(params) => (
@@ -456,13 +376,13 @@ export default function AddJob() {
                       slotProps={{ textField: { fullWidth: true } }}
                     />
 
-                    <TextField label="Description" value={form.description} onChange={(e) => setField("description", e.target.value)} multiline rows={4} fullWidth />
-                    <TextField label="Requirements" value={form.requirements} onChange={(e) => setField("requirements", e.target.value)} multiline rows={3} fullWidth />
-                    <TextField label="Benefits" value={form.benefits} onChange={(e) => setField("benefits", e.target.value)} multiline rows={2} fullWidth />
+                    <TextField label="Description" value={form.description} onChange={(e) => setField("description", e.target.value)} multiline minRows={4} fullWidth />
+                    <TextField label="Requirements" value={form.requirements} onChange={(e) => setField("requirements", e.target.value)} multiline minRows={3} fullWidth />
+                    <TextField label="Benefits" value={form.benefits} onChange={(e) => setField("benefits", e.target.value)} multiline minRows={2} fullWidth />
                     <TextField label="Travel Requirements" value={form.travel_requirements} onChange={(e) => setField("travel_requirements", e.target.value)} fullWidth />
                     <TextField label="Listing URL" value={form.url_listing} onChange={(e) => setField("url_listing", e.target.value)} fullWidth />
                     <TextField label="Application Portal URL" value={form.url_application} onChange={(e) => setField("url_application", e.target.value)} fullWidth />
-                    <TextField label="Notes" value={form.notes} onChange={(e) => setField("notes", e.target.value)} multiline rows={2} fullWidth />
+                    <TextField label="Notes" value={form.notes} onChange={(e) => setField("notes", e.target.value)} multiline minRows={2} fullWidth />
 
                     <Divider />
                     <Stack direction="row" spacing={2} sx={{ justifyContent: "flex-end" }}>
@@ -483,8 +403,7 @@ export default function AddJob() {
             <CardContent sx={{ textAlign: "center", py: 6 }}>
               <Typography variant="h6" gutterBottom>Ready to add a job?</Typography>
               <Typography color="text.secondary" sx={{ mb: 2 }}>
-                Paste a job listing URL and hit "Scrape Job", or switch to "Paste Text" and drop in the job description directly — great for Indeed, LinkedIn, or anywhere that blocks scrapers.
-                Either way, we'll pre-fill the form and you can clean it up. You've got this! 💪
+                Copy the full job listing from LinkedIn, Indeed, or any job board and paste it above. We'll extract company, title, location, pay, and more — then you review and save. You've got this! 💪
               </Typography>
             </CardContent>
           </Card>

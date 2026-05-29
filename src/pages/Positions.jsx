@@ -548,7 +548,7 @@ export default function Positions() {
               value={form.description}
               onChange={handleFormChange}
               multiline
-              rows={3}
+              minRows={3}
               fullWidth
             />
             <TextField
@@ -557,7 +557,7 @@ export default function Positions() {
               value={form.requirements}
               onChange={handleFormChange}
               multiline
-              rows={3}
+              minRows={3}
               fullWidth
               placeholder="Education, experience, skills required..."
             />
@@ -567,7 +567,7 @@ export default function Positions() {
               value={form.benefits}
               onChange={handleFormChange}
               multiline
-              rows={2}
+              minRows={2}
               fullWidth
               placeholder="Health, 401k, PTO..."
             />
@@ -576,6 +576,8 @@ export default function Positions() {
               name="travel_requirements"
               value={form.travel_requirements}
               onChange={handleFormChange}
+              multiline
+              minRows={1}
               fullWidth
               placeholder="e.g. Up to 25% travel"
             />
@@ -591,7 +593,7 @@ export default function Positions() {
               value={form.notes}
               onChange={handleFormChange}
               multiline
-              rows={2}
+              minRows={2}
               fullWidth
             />
           </Stack>

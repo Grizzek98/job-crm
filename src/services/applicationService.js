@@ -4,6 +4,35 @@ import { createAutoEvent } from "./eventService";
 const APP_SELECT =
   "*, positions(name, pay_min, pay_max, pay_type, location, companies(name)), resume:documents!resume_id(id, name), cover_letter:documents!cover_letter_id(id, name)";
 
+// Milestone timestamps are set the FIRST time an application reaches a stage and
+// are never cleared — they let the dashboard report cumulative "ever reached X"
+// counts even after the status moves on (e.g. offered → rejected still counts as
+// an offer received). `applied_date` is the original example of this pattern.
+// A status implies a milestone if reaching it means that stage must have happened:
+//  - an offer doesn't require an interview (direct offers exist), so only an
+//    explicit `interviewing` sets first_interview_at
+//  - accepted/declined both require an offer to have existed
+//  - any employer engagement (interview invite, offer, or rejection) is a response;
+//    withdrawn (user-initiated) and ghosted (no reply) are not
+const MILESTONE_TRIGGERS = {
+  first_interview_at: ["interviewing"],
+  first_offer_at: ["offered", "accepted", "declined"],
+  first_response_at: ["interviewing", "offered", "accepted", "declined", "rejected"],
+};
+
+// Returns the milestone columns to set for `newStatus`, skipping any already set
+// in `existing` so each milestone is written at most once.
+function milestoneUpdates(newStatus, existing = {}) {
+  const nowIso = new Date().toISOString();
+  const updates = {};
+  for (const [col, statuses] of Object.entries(MILESTONE_TRIGGERS)) {
+    if (statuses.includes(newStatus) && !existing[col]) {
+      updates[col] = nowIso;
+    }
+  }
+  return updates;
+}
+
 export async function getApplications() {
   const { data, error } = await supabase
     .from("applications")
@@ -15,9 +44,12 @@ export async function getApplications() {
 }
 
 export async function createApplication(application, notify = () => {}) {
+  // Applications can be created directly in a later status (e.g. "offered"),
+  // so seed any milestones the initial status already implies.
+  const payload = { ...application, ...milestoneUpdates(application.status) };
   const { data, error } = await supabase
     .from("applications")
-    .insert([application])
+    .insert([payload])
     .select(APP_SELECT)
     .single();
 
@@ -57,9 +89,22 @@ export async function createApplication(application, notify = () => {}) {
 }
 
 export async function updateApplication(id, updates, notify, oldStatus) {
+  let finalUpdates = updates;
+
+  // On a status change, set any newly-reached milestones (set-once). Fetch the
+  // existing milestone values first so we never overwrite an earlier timestamp.
+  if (updates.status) {
+    const { data: existing } = await supabase
+      .from("applications")
+      .select("first_interview_at, first_offer_at, first_response_at")
+      .eq("id", id)
+      .single();
+    finalUpdates = { ...updates, ...milestoneUpdates(updates.status, existing ?? {}) };
+  }
+
   const { data, error } = await supabase
     .from("applications")
-    .update(updates)
+    .update(finalUpdates)
     .eq("id", id)
     .select(APP_SELECT)
     .single();

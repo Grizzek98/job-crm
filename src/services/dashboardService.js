@@ -77,20 +77,24 @@ export async function getStats() {
       .from("applications")
       .select("id", { count: "exact", head: true })
       .gte("applied_date", weekAgoStr),
+    // Cumulative: every application that has ever reached the interview stage,
+    // regardless of its current status. See milestone timestamps in
+    // applicationService — offered → rejected still counts here.
     supabase
       .from("applications")
       .select("id", { count: "exact", head: true })
-      .eq("status", "interviewing"),
+      .not("first_interview_at", "is", null),
+    // Cumulative: every application that has ever received an offer.
     supabase
       .from("applications")
       .select("id", { count: "exact", head: true })
-      .in("status", ["offered", "accepted"]),
+      .not("first_offer_at", "is", null),
   ]);
 
   return {
     totalApplications: allApps.count ?? 0,
     appliedThisWeek: weekApps.count ?? 0,
-    activeInterviews: interviews.count ?? 0,
+    interviews: interviews.count ?? 0,
     offersReceived: offers.count ?? 0,
   };
 }

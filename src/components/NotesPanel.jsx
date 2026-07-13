@@ -201,7 +201,10 @@ export default function NotesPanel({ onClose }) {
     }
   }
 
-  // Once editor is ready, load the selected note's content into it
+  // Load the selected note's content into the editor. Keyed on BOTH editor and
+  // selectedId because the editor mounting and the initial selection being set
+  // (after the async notes fetch) can happen in either order — depending on
+  // `editor` alone raced and left the first note highlighted but never opened.
   useEffect(() => {
     if (!editor || !selectedId) return;
     const note = notes.find((n) => n.id === selectedId);
@@ -210,7 +213,9 @@ export default function NotesPanel({ onClose }) {
       note.content ?? { type: "doc", content: [{ type: "paragraph" }] },
       false, // don't emit update — avoids triggering auto-save on load
     );
-  }, [editor]); // eslint-disable-line — intentionally fires only when editor mounts
+    // `notes` is intentionally omitted from deps: it changes on every keystroke
+    // (auto-save updates the list), and re-running would reload/clobber the editor.
+  }, [editor, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Note switching ────────────────────────────────────────────────────────
   async function switchToNote(note) {

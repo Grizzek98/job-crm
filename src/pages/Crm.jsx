@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -14,10 +15,13 @@ import {
   Divider,
   Drawer,
   FormControl,
+  FormControlLabel,
+  FormGroup,
   IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
+  Popover,
   Select,
   Stack,
   Table,
@@ -50,6 +54,10 @@ import SearchIcon from "@mui/icons-material/Search";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import StickyNote2Icon from "@mui/icons-material/StickyNote2";
+import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
+import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import { getApplications, createApplication, updateApplication, deleteApplication } from "../services/applicationService";
 import { getCompanies } from "../services/companyService";
 import { getPositions } from "../services/positionService";
@@ -57,6 +65,9 @@ import { getContacts } from "../services/contactService";
 import { getDocuments } from "../services/documentService";
 import { getEventsByApplication } from "../services/eventService";
 import { useNotify } from "../context/NotificationContext";
+import CompanyFormDialog from "../components/CompanyFormDialog";
+import PositionFormDialog from "../components/PositionFormDialog";
+import ContactFormDialog from "../components/ContactFormDialog";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -99,6 +110,48 @@ const SECTION_LABELS = {
   applications: "Applications",
 };
 
+// Column definitions per section — `key` is used both as the visibility toggle
+// id and (where sortable) as the sort field. Order here = display order.
+const SECTION_COLUMNS = {
+  companies: [
+    { key: "name", label: "Name" },
+    { key: "glassdoor_rating", label: "Glassdoor" },
+    { key: "size", label: "Size" },
+    { key: "url", label: "Website" },
+    { key: "notes", label: "Notes" },
+    { key: "actions", label: "Actions" },
+  ],
+  positions: [
+    { key: "company", label: "Company" },
+    { key: "name", label: "Title" },
+    { key: "status", label: "Status" },
+    { key: "pay", label: "Pay" },
+    { key: "location", label: "Location" },
+    { key: "type", label: "Type" },
+    { key: "created_at", label: "Added" },
+    { key: "notes", label: "Notes" },
+    { key: "action", label: "Action" },
+  ],
+  contacts: [
+    { key: "name", label: "Name" },
+    { key: "company", label: "Company" },
+    { key: "title", label: "Title" },
+    { key: "email", label: "Email" },
+    { key: "phone", label: "Phone" },
+    { key: "notes", label: "Notes" },
+    { key: "actions", label: "Actions" },
+  ],
+  applications: [
+    { key: "company", label: "Company" },
+    { key: "position", label: "Position" },
+    { key: "status", label: "Status" },
+    { key: "applied_date", label: "Applied" },
+    { key: "pay", label: "Pay" },
+    { key: "docs", label: "Docs" },
+    { key: "actions", label: "Actions" },
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -119,10 +172,24 @@ function posStatusChip(status) {
   );
 }
 
+// Milestone row markers — shown whenever the milestone exists on the (linked)
+// application, regardless of current status. The first_*_at columns are set-once
+// and never cleared (see applicationService), so these persist even after the
+// status moves on (e.g. a now-rejected app that once got an offer still shows
+// the trophy). `app` may be undefined (a position with no linked application).
+function showsInterviewMarker(app) {
+  return !!app?.first_interview_at;
+}
+function showsOfferMarker(app) {
+  return !!app?.first_offer_at;
+}
+
 function formatPay(payMin, payMax, payType) {
   if (!payMin && !payMax) return "—";
   const fmt = (n) => `$${Number(n).toLocaleString()}`;
-  const range = [payMin && fmt(payMin), payMax && fmt(payMax)].filter(Boolean).join("–");
+  // Zero-width space after the dash gives the browser a clean break point so
+  // the range can stack min-over-max when the column is squished.
+  const range = [payMin && fmt(payMin), payMax && fmt(payMax)].filter(Boolean).join("–​");
   const suffix = payType === "hourly" ? "/hr" : payType === "salary" ? "/yr" : "";
   return range + suffix;
 }
@@ -156,17 +223,51 @@ function loadSavedSections() {
   return SECTION_KEYS;
 }
 
+// Default column visibility: every column visible in every section
+function defaultColVis() {
+  return Object.fromEntries(
+    SECTION_KEYS.map((s) => [s, SECTION_COLUMNS[s].map((c) => c.key)]),
+  );
+}
+
+// Load column visibility from localStorage, merged with defaults so newly
+// added columns default to visible even if an older preference is stored.
+function loadColVis() {
+  const base = defaultColVis();
+  try {
+    const saved = JSON.parse(localStorage.getItem("crm_columns") ?? "null");
+    if (saved && typeof saved === "object") {
+      for (const s of SECTION_KEYS) {
+        if (Array.isArray(saved[s])) {
+          // Keep the saved choices for columns that still exist...
+          const savedValid = saved[s].filter((k) =>
+            SECTION_COLUMNS[s].some((c) => c.key === k),
+          );
+          // ...and append any columns added since this preference was saved
+          // (e.g. a new "actions" column) so they default to visible instead
+          // of silently disappearing for existing users.
+          const newCols = SECTION_COLUMNS[s]
+            .map((c) => c.key)
+            .filter((k) => !saved[s].includes(k));
+          base[s] = [...savedValid, ...newCols];
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return base;
+}
+
 // ---------------------------------------------------------------------------
 // SortableHeader
 // ---------------------------------------------------------------------------
 
-function SortableHeader({ label, field, sort, onSort, align = "left" }) {
+function SortableHeader({ label, field, sort, onSort, align = "left", width }) {
   const active = sort.field === field;
   return (
     <TableCell
       align={align}
       onClick={() => onSort(field)}
-      sx={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+      sx={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap", width }}
     >
       <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
         <span>{label}</span>
@@ -177,6 +278,91 @@ function SortableHeader({ label, field, sort, onSort, align = "left" }) {
           : <UnfoldMoreIcon sx={{ fontSize: 14, opacity: 0.3 }} />}
       </Stack>
     </TableCell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ColumnMenu — per-section "Columns" button + checkbox popover
+// ---------------------------------------------------------------------------
+
+function ColumnMenu({ columns, visible, onToggle }) {
+  const [anchor, setAnchor] = useState(null);
+  const lastVisible = visible.length <= 1; // don't let the user hide every column
+  return (
+    <>
+      <Button
+        size="small"
+        startIcon={<ViewColumnIcon />}
+        onClick={(e) => setAnchor(e.currentTarget)}
+        sx={{ textTransform: "none", color: "text.secondary" }}
+      >
+        Columns
+      </Button>
+      <Popover
+        open={!!anchor}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <FormGroup sx={{ p: 1, minWidth: 160 }}>
+          {columns.map((col) => {
+            const checked = visible.includes(col.key);
+            return (
+              <FormControlLabel
+                key={col.key}
+                sx={{ m: 0 }}
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={checked}
+                    disabled={checked && lastVisible}
+                    onChange={() => onToggle(col.key)}
+                  />
+                }
+                label={col.label}
+              />
+            );
+          })}
+        </FormGroup>
+      </Popover>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NoteCell — icon shown only when a note exists; click opens a read-only popover
+// with the full note text. Lets you view entity notes from the CRM without
+// opening the edit form or visiting the data pages.
+// ---------------------------------------------------------------------------
+
+function NoteCell({ note }) {
+  const [anchor, setAnchor] = useState(null);
+  if (!note) return null;
+  return (
+    <>
+      <Tooltip title="View note">
+        <IconButton
+          size="small"
+          onClick={(e) => { e.stopPropagation(); setAnchor(e.currentTarget); }}
+        >
+          <StickyNote2Icon fontSize="small" sx={{ color: "text.secondary" }} />
+        </IconButton>
+      </Tooltip>
+      <Popover
+        open={!!anchor}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+      >
+        <Box sx={{ p: 1.5, maxWidth: 340, maxHeight: 320, overflow: "auto" }}>
+          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {note}
+          </Typography>
+        </Box>
+      </Popover>
+    </>
   );
 }
 
@@ -218,6 +404,12 @@ export default function Crm() {
   });
   // Pre-fill search from ?search= URL param (set by sidebar global search)
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+
+  // ── Per-section column visibility ─────────────────────────────────────────
+  const [colVis, setColVis] = useState(loadColVis);
+
+  // ── Inline edit dialog (shared with the data pages) — { type, entity } ─────
+  const [edit, setEdit] = useState(null);
 
   // ── Per-section sort ──────────────────────────────────────────────────────
   const [coSort, setCoSort] = useState({ field: "name", dir: "asc" });
@@ -291,6 +483,22 @@ export default function Crm() {
     });
   }
 
+  function toggleColumn(section, colKey) {
+    setColVis((prev) => {
+      const current = prev[section];
+      const isVisible = current.includes(colKey);
+      // Guard: never allow hiding the last remaining column
+      if (isVisible && current.length <= 1) return prev;
+      // Rebuild in canonical column order so display order stays stable
+      const nextVisible = SECTION_COLUMNS[section]
+        .map((c) => c.key)
+        .filter((k) => (k === colKey ? !isVisible : current.includes(k)));
+      const next = { ...prev, [section]: nextVisible };
+      try { localStorage.setItem("crm_columns", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
   // ── Sort helpers ──────────────────────────────────────────────────────────
   function makeSortHandler(setSort) {
     return (field) =>
@@ -336,6 +544,12 @@ export default function Crm() {
 
   // ── Map position_id → application (for Action button logic) ───────────────
   const appByPosition = Object.fromEntries(applications.map((a) => [a.position_id, a]));
+
+  // ── Column visibility helpers ─────────────────────────────────────────────
+  const showCo = (k) => colVis.companies.includes(k);
+  const showPos = (k) => colVis.positions.includes(k);
+  const showCt = (k) => colVis.contacts.includes(k);
+  const showApp = (k) => colVis.applications.includes(k);
 
   // ── Sorted section rows ───────────────────────────────────────────────────
   const sortedCompanies = sortRows(filteredCompanies, coSort, (c, f) => {
@@ -430,6 +644,17 @@ export default function Crm() {
   }
 
   // ── Inline status change ──────────────────────────────────────────────────
+  // ── Inline edit save handlers (update the local list in place) ────────────
+  function handleCompanySaved(saved) {
+    setCompanies((prev) => prev.map((c) => (c.id === saved.id ? saved : c)));
+  }
+  function handlePositionSaved(saved) {
+    setPositions((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+  }
+  function handleContactSaved(saved) {
+    setContacts((prev) => prev.map((c) => (c.id === saved.id ? saved : c)));
+  }
+
   async function handleInlineStatus(app, newStatus, e) {
     if (e) e.stopPropagation();
     try {
@@ -535,10 +760,11 @@ export default function Crm() {
             {activeSections.includes("companies") && (
               <Card>
                 <CardContent sx={{ p: 0 }}>
-                  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
+                  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Typography variant="subtitle1" fontWeight="bold">
                       🏢 Companies ({sortedCompanies.length})
                     </Typography>
+                    <ColumnMenu columns={SECTION_COLUMNS.companies} visible={colVis.companies} onToggle={(k) => toggleColumn("companies", k)} />
                   </Box>
                   {sortedCompanies.length === 0 ? (
                     <Box sx={{ px: 2, py: 3 }}>
@@ -548,50 +774,62 @@ export default function Crm() {
                     </Box>
                   ) : (
                     <TableContainer>
-                      <Table size="small">
+                      <Table size="small" sx={{ tableLayout: "fixed", minWidth: 700 }}>
                         <TableHead>
                           <TableRow>
-                            <SortableHeader label="Name" field="name" sort={coSort} onSort={makeSortHandler(setCoSort)} />
-                            <SortableHeader label="Glassdoor" field="glassdoor_rating" sort={coSort} onSort={makeSortHandler(setCoSort)} />
-                            <SortableHeader label="Size" field="size" sort={coSort} onSort={makeSortHandler(setCoSort)} />
-                            <SortableHeader label="Website" field="url" sort={coSort} onSort={makeSortHandler(setCoSort)} />
-                            <SortableHeader label="Notes" field="notes" sort={coSort} onSort={makeSortHandler(setCoSort)} />
+                            {showCo("name") && <SortableHeader label="Name" field="name" sort={coSort} onSort={makeSortHandler(setCoSort)} width="42%" />}
+                            {showCo("glassdoor_rating") && <SortableHeader label="Glassdoor" field="glassdoor_rating" sort={coSort} onSort={makeSortHandler(setCoSort)} width="14%" />}
+                            {showCo("size") && <SortableHeader label="Size" field="size" sort={coSort} onSort={makeSortHandler(setCoSort)} width="12%" />}
+                            {showCo("url") && <SortableHeader label="Website" field="url" sort={coSort} onSort={makeSortHandler(setCoSort)} width="12%" />}
+                            {showCo("notes") && <SortableHeader label="Notes" field="notes" sort={coSort} onSort={makeSortHandler(setCoSort)} width="10%" />}
+                            {showCo("actions") && <TableCell align="right" sx={{ width: "10%" }}>Actions</TableCell>}
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {sortedCompanies.map((co) => (
                             <TableRow key={co.id} hover>
-                              <TableCell>
-                                <Typography variant="body2" fontWeight="medium">{co.name}</Typography>
-                              </TableCell>
-                              <TableCell>
-                                {co.glassdoor_rating ? (
-                                  <Chip
-                                    label={co.glassdoor_rating}
-                                    size="small"
-                                    color={glassdoorColor(co.glassdoor_rating)}
-                                  />
-                                ) : "—"}
-                              </TableCell>
-                              <TableCell>
-                                {co.size ? co.size.toLocaleString() : "—"}
-                              </TableCell>
-                              <TableCell>
-                                {co.url ? (
-                                  <IconButton size="small" href={co.url} target="_blank" rel="noopener noreferrer">
-                                    <OpenInNewIcon fontSize="small" />
-                                  </IconButton>
-                                ) : "—"}
-                              </TableCell>
-                              <TableCell>
-                                {co.notes ? (
-                                  <Tooltip title={co.notes}>
-                                    <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-                                      {co.notes}
-                                    </Typography>
+                              {showCo("name") && (
+                                <TableCell>
+                                  <Typography variant="body2" fontWeight="medium">{co.name}</Typography>
+                                </TableCell>
+                              )}
+                              {showCo("glassdoor_rating") && (
+                                <TableCell>
+                                  {co.glassdoor_rating ? (
+                                    <Chip
+                                      label={co.glassdoor_rating}
+                                      size="small"
+                                      color={glassdoorColor(co.glassdoor_rating)}
+                                    />
+                                  ) : "—"}
+                                </TableCell>
+                              )}
+                              {showCo("size") && (
+                                <TableCell>
+                                  {co.size ? co.size.toLocaleString() : "—"}
+                                </TableCell>
+                              )}
+                              {showCo("url") && (
+                                <TableCell>
+                                  {co.url ? (
+                                    <IconButton size="small" href={co.url} target="_blank" rel="noopener noreferrer">
+                                      <OpenInNewIcon fontSize="small" />
+                                    </IconButton>
+                                  ) : "—"}
+                                </TableCell>
+                              )}
+                              {showCo("notes") && (
+                                <TableCell><NoteCell note={co.notes} /></TableCell>
+                              )}
+                              {showCo("actions") && (
+                                <TableCell align="right">
+                                  <Tooltip title="Edit">
+                                    <IconButton size="small" onClick={() => setEdit({ type: "company", entity: co })}>
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
                                   </Tooltip>
-                                ) : "—"}
-                              </TableCell>
+                                </TableCell>
+                              )}
                             </TableRow>
                           ))}
                         </TableBody>
@@ -608,10 +846,11 @@ export default function Crm() {
             {activeSections.includes("positions") && (
               <Card>
                 <CardContent sx={{ p: 0 }}>
-                  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
+                  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Typography variant="subtitle1" fontWeight="bold">
                       📋 Positions ({sortedPositions.length})
                     </Typography>
+                    <ColumnMenu columns={SECTION_COLUMNS.positions} visible={colVis.positions} onToggle={(k) => toggleColumn("positions", k)} />
                   </Box>
                   {sortedPositions.length === 0 ? (
                     <Box sx={{ px: 2, py: 3 }}>
@@ -621,69 +860,126 @@ export default function Crm() {
                     </Box>
                   ) : (
                     <TableContainer>
-                      <Table size="small">
+                      <Table size="small" sx={{ tableLayout: "fixed", minWidth: 1120 }}>
                         <TableHead>
                           <TableRow>
-                            <SortableHeader label="Company" field="company" sort={posSort} onSort={makeSortHandler(setPosSort)} />
-                            <SortableHeader label="Title" field="name" sort={posSort} onSort={makeSortHandler(setPosSort)} />
-                            <SortableHeader label="Status" field="status" sort={posSort} onSort={makeSortHandler(setPosSort)} />
-                            <SortableHeader label="Pay" field="pay" sort={posSort} onSort={makeSortHandler(setPosSort)} />
-                            <SortableHeader label="Location" field="location" sort={posSort} onSort={makeSortHandler(setPosSort)} />
-                            <SortableHeader label="Type" field="type" sort={posSort} onSort={makeSortHandler(setPosSort)} />
-                            <TableCell align="right">Action</TableCell>
+                            {showPos("company") && <SortableHeader label="Company" field="company" sort={posSort} onSort={makeSortHandler(setPosSort)} width="13%" />}
+                            {showPos("name") && <SortableHeader label="Title" field="name" sort={posSort} onSort={makeSortHandler(setPosSort)} width="16%" />}
+                            {showPos("status") && <SortableHeader label="Status" field="status" sort={posSort} onSort={makeSortHandler(setPosSort)} width="12%" />}
+                            {showPos("pay") && <SortableHeader label="Pay" field="pay" sort={posSort} onSort={makeSortHandler(setPosSort)} width="11%" />}
+                            {showPos("location") && <SortableHeader label="Location" field="location" sort={posSort} onSort={makeSortHandler(setPosSort)} width="10%" />}
+                            {showPos("type") && <SortableHeader label="Type" field="type" sort={posSort} onSort={makeSortHandler(setPosSort)} width="7%" />}
+                            {showPos("created_at") && <SortableHeader label="Added" field="created_at" sort={posSort} onSort={makeSortHandler(setPosSort)} width="7%" />}
+                            {showPos("notes") && <SortableHeader label="Notes" field="notes" sort={posSort} onSort={makeSortHandler(setPosSort)} width="6%" />}
+                            {showPos("action") && <TableCell align="right" sx={{ width: "18%" }}>Action</TableCell>}
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {sortedPositions.map((pos) => {
                             const existingApp = appByPosition[pos.id];
+                            const listingUrl = pos.url_application || pos.url_listing;
                             const TYPE_LABELS = {
                               full_time: "Full Time", part_time: "Part Time",
                               contract: "Contract", internship: "Internship", temporary: "Temporary",
                             };
                             return (
                               <TableRow key={pos.id} hover>
-                                <TableCell>
-                                  <Typography variant="body2">{pos.companies?.name ?? "—"}</Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2" fontWeight="medium">{pos.name}</Typography>
-                                </TableCell>
-                                <TableCell>{posStatusChip(pos.status)}</TableCell>
-                                <TableCell>
-                                  <Typography variant="body2" noWrap>
-                                    {formatPay(pos.pay_min, pos.pay_max, pos.pay_type)}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2" noWrap>{pos.location ?? "—"}</Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2" noWrap>
-                                    {TYPE_LABELS[pos.type] ?? (pos.type ? pos.type : "—")}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell align="right">
-                                  {existingApp ? (
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      color="secondary"
-                                      onClick={() => openDrawer(existingApp)}
-                                      sx={{ whiteSpace: "nowrap", fontSize: "0.75rem" }}
-                                    >
-                                      View Application
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      size="small"
-                                      variant="contained"
-                                      onClick={() => openApply(pos)}
-                                      sx={{ whiteSpace: "nowrap", fontSize: "0.75rem" }}
-                                    >
-                                      Apply
-                                    </Button>
-                                  )}
-                                </TableCell>
+                                {showPos("company") && (
+                                  <TableCell>
+                                    <Typography variant="body2">{pos.companies?.name ?? "—"}</Typography>
+                                  </TableCell>
+                                )}
+                                {showPos("name") && (
+                                  <TableCell>
+                                    <Typography variant="body2" fontWeight="medium">{pos.name}</Typography>
+                                  </TableCell>
+                                )}
+                                {showPos("status") && (
+                                  <TableCell>
+                                    <Stack direction="row" spacing={0.25} sx={{ alignItems: "center" }}>
+                                      {posStatusChip(pos.status)}
+                                      {showsInterviewMarker(existingApp) && (
+                                        <Tooltip title="Reached the interview stage">
+                                          <RecordVoiceOverIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+                                        </Tooltip>
+                                      )}
+                                      {showsOfferMarker(existingApp) && (
+                                        <Tooltip title="Received an offer">
+                                          <EmojiEventsIcon sx={{ fontSize: 16, color: "warning.main" }} />
+                                        </Tooltip>
+                                      )}
+                                    </Stack>
+                                  </TableCell>
+                                )}
+                                {showPos("pay") && (
+                                  <TableCell>
+                                    <Typography variant="body2" sx={{ whiteSpace: "normal" }}>
+                                      {formatPay(pos.pay_min, pos.pay_max, pos.pay_type)}
+                                    </Typography>
+                                  </TableCell>
+                                )}
+                                {showPos("location") && (
+                                  <TableCell>
+                                    <Typography variant="body2" sx={{ whiteSpace: "normal" }}>{pos.location ?? "—"}</Typography>
+                                  </TableCell>
+                                )}
+                                {showPos("type") && (
+                                  <TableCell>
+                                    <Typography variant="body2" noWrap>
+                                      {TYPE_LABELS[pos.type] ?? (pos.type ? pos.type : "—")}
+                                    </Typography>
+                                  </TableCell>
+                                )}
+                                {showPos("created_at") && (
+                                  <TableCell>
+                                    <Typography variant="body2" noWrap>
+                                      {pos.created_at ? dayjs(pos.created_at).format("MM/DD/YY") : "—"}
+                                    </Typography>
+                                  </TableCell>
+                                )}
+                                {showPos("notes") && (
+                                  <TableCell><NoteCell note={pos.notes} /></TableCell>
+                                )}
+                                {showPos("action") && (
+                                  <TableCell align="right">
+                                    <Stack direction="row" spacing={0.5} sx={{ justifyContent: "flex-end", alignItems: "center" }}>
+                                      <Tooltip title="Edit">
+                                        <IconButton size="small" onClick={() => setEdit({ type: "position", entity: pos })}>
+                                          <EditIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                      {listingUrl && (
+                                        <Tooltip title="Open listing — apply on the company's site">
+                                          <IconButton size="small" href={listingUrl} target="_blank" rel="noopener noreferrer">
+                                            <OpenInNewIcon fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                      )}
+                                      {existingApp ? (
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          color="secondary"
+                                          onClick={() => openDrawer(existingApp)}
+                                          sx={{ whiteSpace: "nowrap", fontSize: "0.75rem" }}
+                                        >
+                                          View Application
+                                        </Button>
+                                      ) : (
+                                        <Tooltip title="Record that you applied (doesn't apply for you)">
+                                          <Button
+                                            size="small"
+                                            variant="contained"
+                                            onClick={() => openApply(pos)}
+                                            sx={{ whiteSpace: "nowrap", fontSize: "0.75rem" }}
+                                          >
+                                            Log Application
+                                          </Button>
+                                        </Tooltip>
+                                      )}
+                                    </Stack>
+                                  </TableCell>
+                                )}
                               </TableRow>
                             );
                           })}
@@ -701,10 +997,11 @@ export default function Crm() {
             {activeSections.includes("contacts") && (
               <Card>
                 <CardContent sx={{ p: 0 }}>
-                  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
+                  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Typography variant="subtitle1" fontWeight="bold">
                       👤 Contacts ({sortedContacts.length})
                     </Typography>
+                    <ColumnMenu columns={SECTION_COLUMNS.contacts} visible={colVis.contacts} onToggle={(k) => toggleColumn("contacts", k)} />
                   </Box>
                   {sortedContacts.length === 0 ? (
                     <Box sx={{ px: 2, py: 3 }}>
@@ -714,38 +1011,62 @@ export default function Crm() {
                     </Box>
                   ) : (
                     <TableContainer>
-                      <Table size="small">
+                      <Table size="small" sx={{ tableLayout: "fixed", minWidth: 800 }}>
                         <TableHead>
                           <TableRow>
-                            <SortableHeader label="Name" field="name" sort={ctSort} onSort={makeSortHandler(setCtSort)} />
-                            <SortableHeader label="Company" field="company" sort={ctSort} onSort={makeSortHandler(setCtSort)} />
-                            <SortableHeader label="Title" field="title" sort={ctSort} onSort={makeSortHandler(setCtSort)} />
-                            <SortableHeader label="Email" field="email" sort={ctSort} onSort={makeSortHandler(setCtSort)} />
-                            <SortableHeader label="Phone" field="phone" sort={ctSort} onSort={makeSortHandler(setCtSort)} />
+                            {showCt("name") && <SortableHeader label="Name" field="name" sort={ctSort} onSort={makeSortHandler(setCtSort)} width="17%" />}
+                            {showCt("company") && <SortableHeader label="Company" field="company" sort={ctSort} onSort={makeSortHandler(setCtSort)} width="17%" />}
+                            {showCt("title") && <SortableHeader label="Title" field="title" sort={ctSort} onSort={makeSortHandler(setCtSort)} width="16%" />}
+                            {showCt("email") && <SortableHeader label="Email" field="email" sort={ctSort} onSort={makeSortHandler(setCtSort)} width="19%" />}
+                            {showCt("phone") && <SortableHeader label="Phone" field="phone" sort={ctSort} onSort={makeSortHandler(setCtSort)} width="13%" />}
+                            {showCt("notes") && <SortableHeader label="Notes" field="notes" sort={ctSort} onSort={makeSortHandler(setCtSort)} width="8%" />}
+                            {showCt("actions") && <TableCell align="right" sx={{ width: "10%" }}>Actions</TableCell>}
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {sortedContacts.map((ct) => (
                             <TableRow key={ct.id} hover>
-                              <TableCell>
-                                <Typography variant="body2" fontWeight="medium">{ct.name}</Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2">{ct.companies?.name ?? "—"}</Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2">{ct.title ?? "—"}</Typography>
-                              </TableCell>
-                              <TableCell>
-                                {ct.email ? (
-                                  <Typography variant="body2" component="a" href={`mailto:${ct.email}`} color="primary">
-                                    {ct.email}
-                                  </Typography>
-                                ) : "—"}
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2">{ct.phone ?? "—"}</Typography>
-                              </TableCell>
+                              {showCt("name") && (
+                                <TableCell>
+                                  <Typography variant="body2" fontWeight="medium">{ct.name}</Typography>
+                                </TableCell>
+                              )}
+                              {showCt("company") && (
+                                <TableCell>
+                                  <Typography variant="body2">{ct.companies?.name ?? "—"}</Typography>
+                                </TableCell>
+                              )}
+                              {showCt("title") && (
+                                <TableCell>
+                                  <Typography variant="body2">{ct.title ?? "—"}</Typography>
+                                </TableCell>
+                              )}
+                              {showCt("email") && (
+                                <TableCell>
+                                  {ct.email ? (
+                                    <Typography variant="body2" component="a" href={`mailto:${ct.email}`} color="primary">
+                                      {ct.email}
+                                    </Typography>
+                                  ) : "—"}
+                                </TableCell>
+                              )}
+                              {showCt("phone") && (
+                                <TableCell>
+                                  <Typography variant="body2">{ct.phone ?? "—"}</Typography>
+                                </TableCell>
+                              )}
+                              {showCt("notes") && (
+                                <TableCell><NoteCell note={ct.notes} /></TableCell>
+                              )}
+                              {showCt("actions") && (
+                                <TableCell align="right">
+                                  <Tooltip title="Edit">
+                                    <IconButton size="small" onClick={() => setEdit({ type: "contact", entity: ct })}>
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </TableCell>
+                              )}
                             </TableRow>
                           ))}
                         </TableBody>
@@ -762,10 +1083,11 @@ export default function Crm() {
             {activeSections.includes("applications") && (
               <Card>
                 <CardContent sx={{ p: 0 }}>
-                  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
+                  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Typography variant="subtitle1" fontWeight="bold">
                       📨 Applications ({sortedApps.length})
                     </Typography>
+                    <ColumnMenu columns={SECTION_COLUMNS.applications} visible={colVis.applications} onToggle={(k) => toggleColumn("applications", k)} />
                   </Box>
                   {sortedApps.length === 0 ? (
                     <Box sx={{ px: 2, py: 3 }}>
@@ -777,16 +1099,16 @@ export default function Crm() {
                     </Box>
                   ) : (
                     <TableContainer>
-                      <Table size="small">
+                      <Table size="small" sx={{ tableLayout: "fixed", minWidth: 860 }}>
                         <TableHead>
                           <TableRow>
-                            <SortableHeader label="Company" field="company" sort={appSort} onSort={makeSortHandler(setAppSort)} />
-                            <SortableHeader label="Position" field="position" sort={appSort} onSort={makeSortHandler(setAppSort)} />
-                            <SortableHeader label="Status" field="status" sort={appSort} onSort={makeSortHandler(setAppSort)} />
-                            <SortableHeader label="Applied" field="applied_date" sort={appSort} onSort={makeSortHandler(setAppSort)} />
-                            <SortableHeader label="Pay" field="pay" sort={appSort} onSort={makeSortHandler(setAppSort)} />
-                            <TableCell>Docs</TableCell>
-                            <TableCell align="right">Actions</TableCell>
+                            {showApp("company") && <SortableHeader label="Company" field="company" sort={appSort} onSort={makeSortHandler(setAppSort)} width="16%" />}
+                            {showApp("position") && <SortableHeader label="Position" field="position" sort={appSort} onSort={makeSortHandler(setAppSort)} width="22%" />}
+                            {showApp("status") && <SortableHeader label="Status" field="status" sort={appSort} onSort={makeSortHandler(setAppSort)} width="16%" />}
+                            {showApp("applied_date") && <SortableHeader label="Applied" field="applied_date" sort={appSort} onSort={makeSortHandler(setAppSort)} width="13%" />}
+                            {showApp("pay") && <SortableHeader label="Pay" field="pay" sort={appSort} onSort={makeSortHandler(setAppSort)} width="12%" />}
+                            {showApp("docs") && <TableCell sx={{ width: "8%" }}>Docs</TableCell>}
+                            {showApp("actions") && <TableCell align="right" sx={{ width: "13%" }}>Actions</TableCell>}
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -797,64 +1119,90 @@ export default function Crm() {
                               onClick={() => openDrawer(app)}
                               sx={{ cursor: "pointer" }}
                             >
-                              <TableCell>
-                                <Typography variant="body2">{app.positions?.companies?.name ?? "—"}</Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2" fontWeight="medium">{app.positions?.name ?? "—"}</Typography>
-                              </TableCell>
-                              <TableCell onClick={(e) => e.stopPropagation()}>
-                                <Select
-                                  value={app.status ?? "applied"}
-                                  size="small"
-                                  variant="standard"
-                                  disableUnderline
-                                  onChange={(e) => handleInlineStatus(app, e.target.value, e)}
-                                  sx={{ fontSize: 13 }}
-                                >
-                                  {APP_STATUS_OPTIONS.map((s) => (
-                                    <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
-                                  ))}
-                                </Select>
-                              </TableCell>
-                              <TableCell>
-                                {app.applied_date ? dayjs(app.applied_date).format("MMM D, YYYY") : "—"}
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2" noWrap>
-                                  {formatPay(app.positions?.pay_min, app.positions?.pay_max, app.positions?.pay_type)}
-                                </Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Stack direction="row" spacing={0.5}>
-                                  {app.resume && (
-                                    <Tooltip title={`Resume: ${app.resume.name}`}>
-                                      <ArticleIcon fontSize="small" color="primary" />
-                                    </Tooltip>
-                                  )}
-                                  {app.cover_letter && (
-                                    <Tooltip title={`Cover Letter: ${app.cover_letter.name}`}>
-                                      <ArticleIcon fontSize="small" color="secondary" />
-                                    </Tooltip>
-                                  )}
-                                </Stack>
-                              </TableCell>
-                              <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                                <Tooltip title="Edit">
-                                  <IconButton size="small" onClick={(e) => openEdit(app, e)}>
-                                    <EditIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Delete">
-                                  <IconButton
-                                    size="small"
-                                    color="error"
-                                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(app); }}
-                                  >
-                                    <DeleteIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              </TableCell>
+                              {showApp("company") && (
+                                <TableCell>
+                                  <Typography variant="body2">{app.positions?.companies?.name ?? "—"}</Typography>
+                                </TableCell>
+                              )}
+                              {showApp("position") && (
+                                <TableCell>
+                                  <Typography variant="body2" fontWeight="medium">{app.positions?.name ?? "—"}</Typography>
+                                </TableCell>
+                              )}
+                              {showApp("status") && (
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <Stack direction="row" spacing={0.25} sx={{ alignItems: "center" }}>
+                                    <Select
+                                      value={app.status ?? "applied"}
+                                      size="small"
+                                      variant="standard"
+                                      disableUnderline
+                                      onChange={(e) => handleInlineStatus(app, e.target.value, e)}
+                                      sx={{ fontSize: 13 }}
+                                    >
+                                      {APP_STATUS_OPTIONS.map((s) => (
+                                        <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+                                      ))}
+                                    </Select>
+                                    {showsInterviewMarker(app) && (
+                                      <Tooltip title="Reached the interview stage">
+                                        <RecordVoiceOverIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+                                      </Tooltip>
+                                    )}
+                                    {showsOfferMarker(app) && (
+                                      <Tooltip title="Received an offer">
+                                        <EmojiEventsIcon sx={{ fontSize: 16, color: "warning.main" }} />
+                                      </Tooltip>
+                                    )}
+                                  </Stack>
+                                </TableCell>
+                              )}
+                              {showApp("applied_date") && (
+                                <TableCell>
+                                  {app.applied_date ? dayjs(app.applied_date).format("MMM D, YYYY") : "—"}
+                                </TableCell>
+                              )}
+                              {showApp("pay") && (
+                                <TableCell>
+                                  <Typography variant="body2" sx={{ whiteSpace: "normal" }}>
+                                    {formatPay(app.positions?.pay_min, app.positions?.pay_max, app.positions?.pay_type)}
+                                  </Typography>
+                                </TableCell>
+                              )}
+                              {showApp("docs") && (
+                                <TableCell>
+                                  <Stack direction="row" spacing={0.5}>
+                                    {app.resume && (
+                                      <Tooltip title={`Resume: ${app.resume.name}`}>
+                                        <ArticleIcon fontSize="small" color="primary" />
+                                      </Tooltip>
+                                    )}
+                                    {app.cover_letter && (
+                                      <Tooltip title={`Cover Letter: ${app.cover_letter.name}`}>
+                                        <ArticleIcon fontSize="small" color="secondary" />
+                                      </Tooltip>
+                                    )}
+                                  </Stack>
+                                </TableCell>
+                              )}
+                              {showApp("actions") && (
+                                <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                                  <Tooltip title="Edit">
+                                    <IconButton size="small" onClick={(e) => openEdit(app, e)}>
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Delete">
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(app); }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </TableCell>
+                              )}
                             </TableRow>
                           ))}
                         </TableBody>
@@ -902,6 +1250,19 @@ export default function Crm() {
                   <Typography variant="caption" color="text.secondary">Status</Typography>
                   <Box sx={{ mt: 0.5 }}>{appStatusChip(drawerApp.status)}</Box>
                 </Box>
+                {(drawerApp.first_interview_at || drawerApp.first_offer_at) && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Milestones</Typography>
+                    <Stack direction="row" sx={{ mt: 0.5, flexWrap: "wrap", gap: 0.5 }}>
+                      {drawerApp.first_interview_at && (
+                        <Chip size="small" variant="outlined" color="info" icon={<RecordVoiceOverIcon />} label="Interviewed" />
+                      )}
+                      {drawerApp.first_offer_at && (
+                        <Chip size="small" variant="outlined" color="warning" icon={<EmojiEventsIcon />} label="Offer received" />
+                      )}
+                    </Stack>
+                  </Box>
+                )}
                 <Box>
                   <Typography variant="caption" color="text.secondary">Applied Date</Typography>
                   <Typography>
@@ -1074,6 +1435,33 @@ export default function Crm() {
             <Button variant="contained" color="error" onClick={handleDeleteApp}>Delete</Button>
           </DialogActions>
         </Dialog>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Inline edit dialogs (shared with the data pages)                  */}
+        {/* ---------------------------------------------------------------- */}
+        {edit?.type === "company" && (
+          <CompanyFormDialog
+            company={edit.entity}
+            onClose={() => setEdit(null)}
+            onSaved={handleCompanySaved}
+          />
+        )}
+        {edit?.type === "position" && (
+          <PositionFormDialog
+            position={edit.entity}
+            companies={companies}
+            onClose={() => setEdit(null)}
+            onSaved={handlePositionSaved}
+          />
+        )}
+        {edit?.type === "contact" && (
+          <ContactFormDialog
+            contact={edit.entity}
+            companies={companies}
+            onClose={() => setEdit(null)}
+            onSaved={handleContactSaved}
+          />
+        )}
       </Box>
     </LocalizationProvider>
   );

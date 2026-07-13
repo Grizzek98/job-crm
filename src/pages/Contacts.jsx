@@ -9,12 +9,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
-  FormControl,
   IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   Table,
   TableBody,
@@ -22,7 +17,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -30,25 +24,10 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import {
-  getContacts,
-  createContact,
-  updateContact,
-  deleteContact,
-} from "../services/contactService";
+import { getContacts, deleteContact } from "../services/contactService";
 import { getCompanies } from "../services/companyService";
 import { useNotify } from "../context/NotificationContext";
-import { normalizeUrl } from "../utils/url";
-
-const emptyForm = {
-  company_id: "",
-  name: "",
-  title: "",
-  email: "",
-  phone: "",
-  linkedin_url: "",
-  notes: "",
-};
+import ContactFormDialog from "../components/ContactFormDialog";
 
 export default function Contacts() {
   const notify = useNotify();
@@ -58,8 +37,6 @@ export default function Contacts() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -91,66 +68,20 @@ export default function Contacts() {
 
   function openAddDialog() {
     setEditingContact(null);
-    setForm(emptyForm);
     setDialogOpen(true);
   }
 
   function openEditDialog(contact) {
     setEditingContact(contact);
-    setForm({
-      company_id: contact.company_id ?? "",
-      name: contact.name ?? "",
-      title: contact.title ?? "",
-      email: contact.email ?? "",
-      phone: contact.phone ?? "",
-      linkedin_url: contact.linkedin_url ?? "",
-      notes: contact.notes ?? "",
-    });
     setDialogOpen(true);
   }
 
-  function closeDialog() {
-    setDialogOpen(false);
-    setEditingContact(null);
-    setForm(emptyForm);
-  }
-
-  function handleFormChange(e) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  }
-
-  async function handleSave() {
-    if (!form.name.trim()) return;
-    setSaving(true);
-    try {
-      const payload = {
-        company_id: form.company_id || null,
-        name: form.name.trim(),
-        title: form.title.trim() || null,
-        email: form.email.trim() || null,
-        phone: form.phone.trim() || null,
-        linkedin_url: normalizeUrl(form.linkedin_url.trim()) || null,
-        notes: form.notes.trim() || null,
-      };
-
-      if (editingContact) {
-        const updated = await updateContact(editingContact.id, payload);
-        setContacts((prev) =>
-          prev.map((c) => (c.id === updated.id ? updated : c)),
-        );
-      } else {
-        const created = await createContact(payload, notify);
-        setContacts((prev) =>
-          [...prev, created].sort((a, b) => a.name.localeCompare(b.name)),
-        );
-      }
-
-      closeDialog();
-    } catch (err) {
-      notify(err.message);
-    } finally {
-      setSaving(false);
-    }
+  function handleSaved(saved, isNew) {
+    setContacts((prev) =>
+      isNew
+        ? [...prev, saved].sort((a, b) => a.name.localeCompare(b.name))
+        : prev.map((c) => (c.id === saved.id ? saved : c)),
+    );
   }
 
   async function handleDeleteConfirm() {
@@ -273,94 +204,15 @@ export default function Contacts() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {editingContact ? "Edit Contact" : "Add Contact"}
-        </DialogTitle>
-        <Divider />
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField
-              label="Name"
-              name="name"
-              value={form.name}
-              onChange={handleFormChange}
-              required
-              fullWidth
-              autoFocus
-            />
-            <FormControl fullWidth>
-              <InputLabel>Company</InputLabel>
-              <Select
-                name="company_id"
-                value={form.company_id}
-                label="Company"
-                onChange={handleFormChange}
-              >
-                <MenuItem value="">
-                  <em>None</em>
-                </MenuItem>
-                {companies.map((c) => (
-                  <MenuItem key={c.id} value={c.id}>
-                    {c.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Title"
-              name="title"
-              value={form.title}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            <TextField
-              label="Email"
-              name="email"
-              value={form.email}
-              onChange={handleFormChange}
-              type="email"
-              fullWidth
-            />
-            <TextField
-              label="Phone"
-              name="phone"
-              value={form.phone}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            <TextField
-              label="LinkedIn URL"
-              name="linkedin_url"
-              value={form.linkedin_url}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            <TextField
-              label="Notes"
-              name="notes"
-              value={form.notes}
-              onChange={handleFormChange}
-              multiline
-              minRows={3}
-              fullWidth
-            />
-          </Stack>
-        </DialogContent>
-        <Divider />
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={closeDialog} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={saving || !form.name.trim()}
-          >
-            {saving ? <CircularProgress size={20} color="inherit" /> : "Save"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Add / Edit dialog (shared with CRM) */}
+      {dialogOpen && (
+        <ContactFormDialog
+          contact={editingContact}
+          companies={companies}
+          onClose={() => setDialogOpen(false)}
+          onSaved={handleSaved}
+        />
+      )}
 
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>Delete Contact</DialogTitle>

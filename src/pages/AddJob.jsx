@@ -29,10 +29,12 @@ import { createPosition } from "../services/positionService";
 import { useNotify } from "../context/NotificationContext";
 import { normalizeUrl } from "../utils/url";
 
-// 'applied' is intentionally excluded — it's set automatically when an application is created
+// `applied` is auto-set when an application record is created, but it's also
+// manually selectable (e.g. pasting a job you've already applied to).
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
   { value: "applying", label: "Applying" },
+  { value: "applied", label: "Applied" },
   { value: "not_interested", label: "Not Interested" },
   { value: "closed", label: "Closed" },
 ];

@@ -10,9 +10,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
-  InputAdornment,
   Stack,
   Table,
   TableBody,
@@ -20,32 +18,17 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
-  Alert,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import {
-  getCompanies,
-  createCompany,
-  updateCompany,
-  deleteCompany,
-} from "../services/companyService";
+import { getCompanies, deleteCompany } from "../services/companyService";
 import { useNotify } from "../context/NotificationContext";
 import { normalizeUrl } from "../utils/url";
-
-const emptyForm = {
-  name: "",
-  size: "",
-  url: "",
-  glassdoor_rating: "",
-  notes: "",
-};
-
+import CompanyFormDialog from "../components/CompanyFormDialog";
 
 export default function Companies() {
   const notify = useNotify();
@@ -55,8 +38,6 @@ export default function Companies() {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState(null); // null = adding new
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -83,65 +64,20 @@ export default function Companies() {
 
   function openAddDialog() {
     setEditingCompany(null);
-    setForm(emptyForm);
     setDialogOpen(true);
   }
 
   function openEditDialog(company) {
     setEditingCompany(company);
-    setForm({
-      name: company.name ?? "",
-      size: company.size ?? "",
-      url: company.url ?? "",
-      glassdoor_rating: company.glassdoor_rating ?? "",
-      notes: company.notes ?? "",
-    });
     setDialogOpen(true);
   }
 
-  function closeDialog() {
-    setDialogOpen(false);
-    setEditingCompany(null);
-    setForm(emptyForm);
-  }
-
-  function handleFormChange(e) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  }
-
-  async function handleSave() {
-    if (!form.name.trim()) return;
-
-    setSaving(true);
-    try {
-      const payload = {
-        name: form.name.trim(),
-        size: form.size ? parseInt(form.size) : null,
-        url: normalizeUrl(form.url.trim()),
-        glassdoor_rating: form.glassdoor_rating
-          ? parseFloat(form.glassdoor_rating)
-          : null,
-        notes: form.notes.trim() || null,
-      };
-
-      if (editingCompany) {
-        const updated = await updateCompany(editingCompany.id, payload);
-        setCompanies((prev) =>
-          prev.map((c) => (c.id === updated.id ? updated : c)),
-        );
-      } else {
-        const created = await createCompany(payload, notify);
-        setCompanies((prev) =>
-          [...prev, created].sort((a, b) => a.name.localeCompare(b.name)),
-        );
-      }
-
-      closeDialog();
-    } catch (err) {
-      notify(err.message);
-    } finally {
-      setSaving(false);
-    }
+  function handleSaved(saved, isNew) {
+    setCompanies((prev) =>
+      isNew
+        ? [...prev, saved].sort((a, b) => a.name.localeCompare(b.name))
+        : prev.map((c) => (c.id === saved.id ? saved : c)),
+    );
   }
 
   // --- Delete handlers ---
@@ -286,72 +222,14 @@ export default function Companies() {
         </CardContent>
       </Card>
 
-      {/* Add / Edit dialog */}
-      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {editingCompany ? "Edit Company" : "Add Company"}
-        </DialogTitle>
-        <Divider />
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField
-              label="Company Name"
-              name="name"
-              value={form.name}
-              onChange={handleFormChange}
-              required
-              fullWidth
-              autoFocus
-            />
-            <TextField
-              label="Number of Employees"
-              name="size"
-              value={form.size}
-              onChange={handleFormChange}
-              type="number"
-              fullWidth
-            />
-            <TextField
-              label="Website URL"
-              name="url"
-              value={form.url}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            <TextField
-              label="Glassdoor Rating"
-              name="glassdoor_rating"
-              value={form.glassdoor_rating}
-              onChange={handleFormChange}
-              type="number"
-              slotProps={{ htmlInput: { min: 0, max: 5, step: 0.1 }, input: { endAdornment: <InputAdornment position="end">/ 5</InputAdornment> } }}
-              fullWidth
-            />
-            <TextField
-              label="Notes"
-              name="notes"
-              value={form.notes}
-              onChange={handleFormChange}
-              multiline
-              minRows={3}
-              fullWidth
-            />
-          </Stack>
-        </DialogContent>
-        <Divider />
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={closeDialog} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={saving || !form.name.trim()}
-          >
-            {saving ? <CircularProgress size={20} color="inherit" /> : "Save"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Add / Edit dialog (shared with CRM) */}
+      {dialogOpen && (
+        <CompanyFormDialog
+          company={editingCompany}
+          onClose={() => setDialogOpen(false)}
+          onSaved={handleSaved}
+        />
+      )}
 
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>

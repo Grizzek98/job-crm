@@ -384,7 +384,12 @@ function YouTubePlayer() {
   // Create or swap the video when currentVideo changes
   useEffect(() => {
     if (!currentVideo) {
-      try { playerRef.current?.stopVideo(); } catch { /* ignore */ }
+      // Video stopped: the component renders null, so React removes the wrapper
+      // (and its iframe) from the DOM. Destroy the player and clear the ref too —
+      // otherwise a later load calls loadVideoById() on a player whose iframe is
+      // detached, which throws "player is not attached to the DOM".
+      try { playerRef.current?.destroy(); } catch { /* ignore */ }
+      playerRef.current = null;
       return;
     }
     const videoId = extractYouTubeId(currentVideo.url);

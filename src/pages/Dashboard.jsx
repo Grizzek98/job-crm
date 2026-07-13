@@ -120,10 +120,10 @@ function statsMessage(key, count) {
     if (count < 5) return `You applied to ${count} jobs this week! Holy shit bro you are amazing! I'm really proud of you :)`;
     return `${count} applications this week?! You are on absolute fire! 🔥🔥🔥`;
   }
-  if (key === "activeInterviews") {
-    if (count === 0) return "No active interviews yet — they're coming, keep applying!";
-    if (count === 1) return "1 active interview! Go get 'em! 🤞";
-    return `${count} active interviews — look at you go! You're a superstar ⭐`;
+  if (key === "interviews") {
+    if (count === 0) return "No interviews yet — they're coming, keep applying!";
+    if (count === 1) return "1 interview landed! Go get 'em! 🤞";
+    return `${count} interviews landed — look at you go! You're a superstar ⭐`;
   }
   if (key === "offersReceived") {
     if (count === 0) return "No offers yet — but they're coming. Keep pushing!";
@@ -614,7 +614,9 @@ function getTimeOfDay() {
 // Dashboard
 // ---------------------------------------------------------------------------
 
-const MAX_POSITION_ROWS = 8;
+// Dashboard list sections show ~4 rows and scroll for the rest (sticky header).
+// Each row is a two-line cell (~53px) + the sticky header (~34px).
+const DASHBOARD_LIST_MAX_HEIGHT = 260;
 
 export default function Dashboard() {
   const theme = useTheme();
@@ -780,8 +782,6 @@ export default function Dashboard() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const visiblePositions   = positionsNeeding.slice(0, MAX_POSITION_ROWS);
-  const hiddenPositionCount = positionsNeeding.length - visiblePositions.length;
   const completedGoals     = goals.filter((g) => g.completed).length;
   const allGoalsDone       = goals.length > 0 && completedGoals === goals.length;
 
@@ -810,7 +810,7 @@ export default function Dashboard() {
         {[
           { label: "Total Applications", msgKey: "totalApplications", val: stats?.totalApplications ?? 0 },
           { label: "Applied This Week",  msgKey: "appliedThisWeek",   val: stats?.appliedThisWeek   ?? 0 },
-          { label: "Active Interviews",  msgKey: "activeInterviews",  val: stats?.activeInterviews  ?? 0 },
+          { label: "Interviews",         msgKey: "interviews",        val: stats?.interviews        ?? 0 },
           { label: "Offers Received",    msgKey: "offersReceived",    val: stats?.offersReceived    ?? 0 },
         ].map((s) => (
           <Grid size={{ xs: 12, sm: 6, md: 3 }} key={s.msgKey}>
@@ -841,19 +841,18 @@ export default function Dashboard() {
                   </Typography>
                 </Stack>
               ) : (
-                <>
-                  <TableContainer>
-                    <Table size="small">
+                <TableContainer sx={{ maxHeight: DASHBOARD_LIST_MAX_HEIGHT }}>
+                    <Table size="small" stickyHeader sx={{ tableLayout: "fixed", "& .MuiTableCell-stickyHeader": { bgcolor: "background.paper" } }}>
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ width: 80 }}>Urgency</TableCell>
-                          <TableCell>Position</TableCell>
-                          <TableCell>Updated</TableCell>
-                          <TableCell align="right">Actions</TableCell>
+                          <TableCell sx={{ width: "14%" }}>Urgency</TableCell>
+                          <TableCell sx={{ width: "40%" }}>Position</TableCell>
+                          <TableCell sx={{ width: "16%" }}>Updated</TableCell>
+                          <TableCell align="right" sx={{ width: "30%" }}>Actions</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {visiblePositions.map((pos) => {
+                        {positionsNeeding.map((pos) => {
                           const tier = TIER_CONFIG[pos.tier];
                           const listingUrl = pos.url_application || pos.url_listing;
                           return (
@@ -863,7 +862,7 @@ export default function Dashboard() {
                               </TableCell>
                               <TableCell>
                                 <Typography variant="body2" fontWeight="medium" noWrap>{pos.name}</Typography>
-                                <Typography variant="caption" color="text.secondary" noWrap display="block">
+                                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
                                   {pos.companies?.name ?? "—"}{formatPay(pos) ? ` · ${formatPay(pos)}` : ""}
                                 </Typography>
                               </TableCell>
@@ -879,13 +878,15 @@ export default function Dashboard() {
                                       </IconButton>
                                     </Tooltip>
                                   )}
-                                  <Button
-                                    size="small" variant="outlined"
-                                    onClick={() => navigate(`/crm?apply=${pos.id}`)}
-                                    sx={{ whiteSpace: "nowrap", minWidth: "unset", px: 1, fontSize: "0.7rem" }}
-                                  >
-                                    Apply
-                                  </Button>
+                                  <Tooltip title="Record that you applied (doesn't apply for you)">
+                                    <Button
+                                      size="small" variant="outlined"
+                                      onClick={() => navigate(`/crm?apply=${pos.id}`)}
+                                      sx={{ whiteSpace: "nowrap", minWidth: "unset", px: 1, fontSize: "0.7rem" }}
+                                    >
+                                      Log Application
+                                    </Button>
+                                  </Tooltip>
                                 </Stack>
                               </TableCell>
                             </TableRow>
@@ -894,14 +895,6 @@ export default function Dashboard() {
                       </TableBody>
                     </Table>
                   </TableContainer>
-                  {hiddenPositionCount > 0 && (
-                    <Box sx={{ pt: 1.5, pb: 0.5, textAlign: "right" }}>
-                      <Button size="small" onClick={() => navigate("/positions")}>
-                        See {hiddenPositionCount} more →
-                      </Button>
-                    </Box>
-                  )}
-                </>
               )}
             </CardContent>
           </Card>
@@ -926,13 +919,13 @@ export default function Dashboard() {
                   </Typography>
                 </Stack>
               ) : (
-                <TableContainer>
-                  <Table size="small">
+                <TableContainer sx={{ maxHeight: DASHBOARD_LIST_MAX_HEIGHT }}>
+                  <Table size="small" stickyHeader sx={{ tableLayout: "fixed", "& .MuiTableCell-stickyHeader": { bgcolor: "background.paper" } }}>
                     <TableHead>
                       <TableRow>
-                        <TableCell>Position</TableCell>
-                        <TableCell>Status</TableCell>
-                        <TableCell>Last Activity</TableCell>
+                        <TableCell sx={{ width: "55%" }}>Position</TableCell>
+                        <TableCell sx={{ width: "22%" }}>Status</TableCell>
+                        <TableCell sx={{ width: "23%" }}>Last Activity</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -940,7 +933,7 @@ export default function Dashboard() {
                         <TableRow key={app.id} hover sx={{ cursor: "pointer" }} onClick={() => navigate("/crm")}>
                           <TableCell>
                             <Typography variant="body2" fontWeight="medium" noWrap>{app.positions?.name ?? "—"}</Typography>
-                            <Typography variant="caption" color="text.secondary" noWrap display="block">
+                            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
                               {app.positions?.companies?.name ?? "—"}
                             </Typography>
                           </TableCell>
@@ -952,7 +945,7 @@ export default function Dashboard() {
                             />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" color="error.main">{daysAgo(app.updated_at)}</Typography>
+                            <Typography variant="body2" color="error.main" noWrap>{daysAgo(app.updated_at)}</Typography>
                           </TableCell>
                         </TableRow>
                       ))}

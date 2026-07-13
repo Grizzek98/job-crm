@@ -10,13 +10,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
-  FormControl,
   IconButton,
-  InputAdornment,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   Table,
   TableBody,
@@ -24,53 +18,17 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import { LocalizationProvider, DatePicker } from "@mui/x-date-pickers";
-import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import dayjs from "dayjs";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import {
-  getPositions,
-  createPosition,
-  updatePosition,
-  deletePosition,
-} from "../services/positionService";
+import { getPositions, deletePosition } from "../services/positionService";
 import { getCompanies } from "../services/companyService";
 import { useNotify } from "../context/NotificationContext";
-import { normalizeUrl } from "../utils/url";
-
-const emptyForm = {
-  company_id: "",
-  name: "",
-  status: "active",
-  type: "",
-  location: "",
-  pay_min: "",
-  pay_max: "",
-  pay_type: "",
-  url_listing: "",
-  url_application: "",
-  description: "",
-  requirements: "",
-  benefits: "",
-  travel_requirements: "",
-  notes: "",
-  posted_at: null,
-};
-
-// 'applied' is intentionally excluded — it's set automatically when an application is created
-const STATUS_OPTIONS = [
-  { value: "active", label: "Active" },
-  { value: "applying", label: "Applying" },
-  { value: "not_interested", label: "Not Interested" },
-  { value: "closed", label: "Closed" },
-];
+import PositionFormDialog from "../components/PositionFormDialog";
 
 // Full label map including auto-set statuses (used for display only)
 const STATUS_LABELS = {
@@ -87,11 +45,6 @@ const TYPE_OPTIONS = [
   { value: "contract", label: "Contract" },
   { value: "internship", label: "Internship" },
   { value: "temporary", label: "Temporary" },
-];
-
-const PAY_TYPE_OPTIONS = [
-  { value: "hourly", label: "Hourly" },
-  { value: "salary", label: "Salary" },
 ];
 
 function statusColor(status) {
@@ -140,8 +93,6 @@ export default function Positions() {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -178,91 +129,20 @@ export default function Positions() {
 
   function openAddDialog() {
     setEditingPosition(null);
-    setForm(emptyForm);
     setDialogOpen(true);
   }
 
   function openEditDialog(position) {
     setEditingPosition(position);
-    setForm({
-      company_id: position.company_id ?? "",
-      name: position.name ?? "",
-      status: position.status ?? "active",
-      type: position.type ?? "",
-      location: position.location ?? "",
-      pay_min: position.pay_min ?? "",
-      pay_max: position.pay_max ?? "",
-      pay_type: position.pay_type ?? "",
-      url_listing: position.url_listing ?? "",
-      url_application: position.url_application ?? "",
-      description: position.description ?? "",
-      requirements: position.requirements ?? "",
-      benefits: position.benefits ?? "",
-      travel_requirements: position.travel_requirements ?? "",
-      notes: position.notes ?? "",
-      posted_at: position.posted_at ? dayjs(position.posted_at) : null,
-    });
     setDialogOpen(true);
   }
 
-  function closeDialog() {
-    setDialogOpen(false);
-    setEditingPosition(null);
-    setForm(emptyForm);
-  }
-
-  function handleFormChange(e) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  }
-
-  async function handleSave() {
-    if (!form.name.trim()) return;
-
-    setSaving(true);
-    try {
-      const payload = {
-        company_id: form.company_id || null,
-        name: form.name.trim(),
-        status: form.status || "active",
-        type: form.type || null,
-        location: form.location.trim() || null,
-        pay_min: form.pay_min !== "" ? parseFloat(form.pay_min) : null,
-        pay_max: form.pay_max !== "" ? parseFloat(form.pay_max) : null,
-        pay_type: form.pay_type || null,
-        url_listing: normalizeUrl(form.url_listing.trim()) || null,
-        url_application: normalizeUrl(form.url_application.trim()) || null,
-        description: form.description.trim() || null,
-        requirements: form.requirements.trim() || null,
-        benefits: form.benefits.trim() || null,
-        travel_requirements: form.travel_requirements.trim() || null,
-        notes: form.notes.trim() || null,
-        posted_at: form.posted_at?.toISOString() ?? null,
-      };
-
-      if (editingPosition) {
-        const updated = await updatePosition(
-          editingPosition.id,
-          payload,
-          notify,
-          editingPosition.status,
-        );
-        setPositions((prev) =>
-          prev.map((p) => (p.id === updated.id ? updated : p)),
-        );
-      } else {
-        const created = await createPosition(payload, notify);
-        setPositions((prev) =>
-          [...prev, created].sort((a, b) => a.name.localeCompare(b.name)),
-        );
-      }
-
-      notify("Position saved!", "success");
-      closeDialog();
-    } catch (err) {
-      notify(err.message, "error");
-    } finally {
-      setSaving(false);
-    }
+  function handleSaved(saved, isNew) {
+    setPositions((prev) =>
+      isNew
+        ? [...prev, saved].sort((a, b) => a.name.localeCompare(b.name))
+        : prev.map((p) => (p.id === saved.id ? saved : p)),
+    );
   }
 
   // --- Delete handlers ---
@@ -282,7 +162,6 @@ export default function Positions() {
   // --- Render ---
 
   return (
-    <LocalizationProvider dateAdapter={AdapterDayjs}>
     <Box>
       {/* Page header */}
       <Stack
@@ -415,203 +294,15 @@ export default function Positions() {
         </CardContent>
       </Card>
 
-      {/* Add / Edit dialog */}
-      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {editingPosition ? "Edit Position" : "Add Position"}
-        </DialogTitle>
-        <Divider />
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField
-              label="Job Title"
-              name="name"
-              value={form.name}
-              onChange={handleFormChange}
-              required
-              fullWidth
-              autoFocus
-            />
-            <FormControl fullWidth>
-              <InputLabel>Company</InputLabel>
-              <Select
-                name="company_id"
-                value={form.company_id}
-                label="Company"
-                onChange={handleFormChange}
-              >
-                <MenuItem value="">
-                  <em>None</em>
-                </MenuItem>
-                {companies.map((c) => (
-                  <MenuItem key={c.id} value={c.id}>
-                    {c.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select
-                name="status"
-                value={form.status}
-                label="Status"
-                onChange={handleFormChange}
-              >
-                {STATUS_OPTIONS.map((o) => (
-                  <MenuItem key={o.value} value={o.value}>
-                    {o.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel>Type</InputLabel>
-              <Select
-                name="type"
-                value={form.type}
-                label="Type"
-                onChange={handleFormChange}
-              >
-                <MenuItem value="">
-                  <em>None</em>
-                </MenuItem>
-                {TYPE_OPTIONS.map((o) => (
-                  <MenuItem key={o.value} value={o.value}>
-                    {o.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Location"
-              name="location"
-              value={form.location}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="Pay Min"
-                name="pay_min"
-                value={form.pay_min}
-                onChange={handleFormChange}
-                type="number"
-                slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
-                fullWidth
-              />
-              <TextField
-                label="Pay Max"
-                name="pay_max"
-                value={form.pay_max}
-                onChange={handleFormChange}
-                type="number"
-                slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
-                fullWidth
-              />
-            </Stack>
-            <FormControl fullWidth>
-              <InputLabel>Pay Type</InputLabel>
-              <Select
-                name="pay_type"
-                value={form.pay_type}
-                label="Pay Type"
-                onChange={handleFormChange}
-              >
-                <MenuItem value="">
-                  <em>None</em>
-                </MenuItem>
-                {PAY_TYPE_OPTIONS.map((o) => (
-                  <MenuItem key={o.value} value={o.value}>
-                    {o.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Listing URL"
-              name="url_listing"
-              value={form.url_listing}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            <TextField
-              label="Application URL"
-              name="url_application"
-              value={form.url_application}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            <TextField
-              label="Description"
-              name="description"
-              value={form.description}
-              onChange={handleFormChange}
-              multiline
-              minRows={3}
-              fullWidth
-            />
-            <TextField
-              label="Requirements"
-              name="requirements"
-              value={form.requirements}
-              onChange={handleFormChange}
-              multiline
-              minRows={3}
-              fullWidth
-              placeholder="Education, experience, skills required..."
-            />
-            <TextField
-              label="Benefits"
-              name="benefits"
-              value={form.benefits}
-              onChange={handleFormChange}
-              multiline
-              minRows={2}
-              fullWidth
-              placeholder="Health, 401k, PTO..."
-            />
-            <TextField
-              label="Travel Requirements"
-              name="travel_requirements"
-              value={form.travel_requirements}
-              onChange={handleFormChange}
-              multiline
-              minRows={1}
-              fullWidth
-              placeholder="e.g. Up to 25% travel"
-            />
-            <DatePicker
-              label="Posted Date"
-              value={form.posted_at}
-              onChange={(val) => setForm((f) => ({ ...f, posted_at: val }))}
-              slotProps={{ textField: { fullWidth: true } }}
-            />
-            <TextField
-              label="Notes"
-              name="notes"
-              value={form.notes}
-              onChange={handleFormChange}
-              multiline
-              minRows={2}
-              fullWidth
-            />
-          </Stack>
-        </DialogContent>
-        <Divider />
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={closeDialog} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={saving || !form.name.trim()}
-          >
-            {saving ? <CircularProgress size={20} color="inherit" /> : "Save"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Add / Edit dialog (shared with CRM) */}
+      {dialogOpen && (
+        <PositionFormDialog
+          position={editingPosition}
+          companies={companies}
+          onClose={() => setDialogOpen(false)}
+          onSaved={handleSaved}
+        />
+      )}
 
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
@@ -634,6 +325,5 @@ export default function Positions() {
         </DialogActions>
       </Dialog>
     </Box>
-    </LocalizationProvider>
   );
 }

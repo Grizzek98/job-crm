@@ -1,4 +1,5 @@
 import { supabase } from "../supabaseClient";
+import { userFilePath } from "./storageService";
 
 const DEFAULTS = {
   daily_goal: 2,
@@ -54,7 +55,7 @@ const BACKGROUNDS_BUCKET = "backgrounds";
 
 export async function uploadBackgroundImage(file, currentSettings) {
   const ext = file.name.split(".").pop();
-  const path = `${crypto.randomUUID()}.${ext}`;
+  const path = await userFilePath(`${crypto.randomUUID()}.${ext}`);
 
   const { error: uploadError } = await supabase.storage
     .from(BACKGROUNDS_BUCKET)

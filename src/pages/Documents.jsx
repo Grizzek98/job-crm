@@ -47,7 +47,7 @@ import {
   deleteDocumentFile,
 } from "../services/documentService";
 import { useNotify } from "../context/NotificationContext";
-import { supabase } from "../supabaseClient";
+import { useSignedUrls } from "../services/storageService";
 
 const BUCKET = "documents";
 
@@ -69,12 +69,6 @@ function typeColor(type) {
   }
 }
 
-function getPublicUrl(path) {
-  if (!path) return null;
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data?.publicUrl ?? null;
-}
-
 export default function Documents() {
   const notify = useNotify();
   const fileInputRef = useRef(null);
@@ -89,6 +83,7 @@ export default function Documents() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const fileUrls = useSignedUrls(BUCKET, documents.map((d) => d.file_path));
 
   useEffect(() => { loadDocuments(); }, []);
 
@@ -233,7 +228,7 @@ export default function Documents() {
                 </TableHead>
                 <TableBody>
                   {documents.map((doc) => {
-                    const publicUrl = getPublicUrl(doc.file_path);
+                    const fileUrl = doc.file_path ? fileUrls[doc.file_path] : null;
                     return (
                       <TableRow key={doc.id} hover>
                         <TableCell><Typography fontWeight="medium">{doc.name}</Typography></TableCell>
@@ -244,7 +239,7 @@ export default function Documents() {
                           {doc.is_base ? <Chip label="Base" size="small" color="success" /> : "—"}
                         </TableCell>
                         <TableCell>
-                          {publicUrl ? (
+                          {doc.file_path ? (
                             <Stack direction="row" spacing={0.5}>
                               {isPdf(doc) && (
                                 <Tooltip title="Preview">
@@ -254,7 +249,7 @@ export default function Documents() {
                                 </Tooltip>
                               )}
                               <Tooltip title="Download">
-                                <IconButton size="small" component="a" href={publicUrl} download>
+                                <IconButton size="small" component="a" href={fileUrl ?? undefined} disabled={!fileUrl} download>
                                   <DownloadIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
@@ -368,7 +363,7 @@ export default function Documents() {
         <DialogContent sx={{ p: 0, height: "75vh" }}>
           {previewDoc && (
             <iframe
-              src={getPublicUrl(previewDoc.file_path)}
+              src={fileUrls[previewDoc.file_path]}
               title={previewDoc.name}
               width="100%"
               height="100%"

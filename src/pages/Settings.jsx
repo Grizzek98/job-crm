@@ -16,7 +16,7 @@ import {
   Alert,
 } from "@mui/material";
 import { upsertSettings, uploadBackgroundImage, deleteBackgroundImage } from "../services/settingsService";
-import { supabase } from "../supabaseClient";
+import { useSignedUrls } from "../services/storageService";
 import { useNotify } from "../context/NotificationContext";
 import { requestCalendarToken, clearStoredToken } from "../utils/googleAuth";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
@@ -105,7 +105,8 @@ function ImageSwatch({ path, publicUrl, selected, onSelect, onDelete }) {
         width: 64,
         height: 64,
         borderRadius: 2,
-        backgroundImage: `url(${publicUrl})`,
+        backgroundImage: publicUrl ? `url(${publicUrl})` : "none",
+        bgcolor: "action.hover",
         backgroundSize: "cover",
         backgroundPosition: "center",
         cursor: "pointer",
@@ -147,6 +148,7 @@ function ImageSwatch({ path, publicUrl, selected, onSelect, onDelete }) {
 export default function Settings({ settings, onSettingsChange }) {
   const notify = useNotify();
   const [form, setForm] = useState(null);
+  const bgImageUrls = useSignedUrls("backgrounds", form?.theme_background_images ?? []);
   const [saving, setSaving] = useState(false);
   const [calSaving, setCalSaving] = useState(false);
   const [uploadingBg, setUploadingBg] = useState(false);
@@ -443,12 +445,11 @@ export default function Settings({ settings, onSettingsChange }) {
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
                   {(form.theme_background_images ?? []).map((path) => {
-                    const publicUrl = supabase.storage.from("backgrounds").getPublicUrl(path).data.publicUrl;
                     return (
                       <ImageSwatch
                         key={path}
                         path={path}
-                        publicUrl={publicUrl}
+                        publicUrl={bgImageUrls[path]}
                         selected={form.theme_background_image === path}
                         onSelect={(p) => setForm((f) => ({ ...f, theme_background_image: p, theme_background: null }))}
                         onDelete={handleDeleteBgImage}

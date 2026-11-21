@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import { useSignedUrls } from "../services/storageService";
 import {
   Box,
   Container,
@@ -903,11 +904,10 @@ export default function MainLayout({ settings, onSettingsChange }) {
 
   const drawerWidth = collapsed ? DRAWER_COLLAPSED_WIDTH : DRAWER_WIDTH;
 
-  // Background image — derive public URL from selected path (null = no image)
+  // Background image — private file, shown through a signed URL (null = no image)
   const bgImagePath = settings?.theme_background_image ?? null;
-  const bgImageUrl  = bgImagePath
-    ? supabase.storage.from("backgrounds").getPublicUrl(bgImagePath).data.publicUrl
-    : null;
+  const bgImageUrls = useSignedUrls("backgrounds", bgImagePath ? [bgImagePath] : []);
+  const bgImageUrl  = bgImagePath ? bgImageUrls[bgImagePath] ?? null : null;
 
   const drawerContent = (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflowX: "hidden" }}>

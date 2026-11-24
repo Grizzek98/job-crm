@@ -8,12 +8,13 @@ import {
   Button,
   CircularProgress,
   Container,
+  Link,
   Paper,
   TextField,
   Typography,
 } from "@mui/material";
 
-export default function Login() {
+export default function Login({ onShowSignUp }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
@@ -100,6 +101,13 @@ export default function Login() {
               )}
             </Button>
           </Box>
+
+          <Typography variant="body2" align="center" sx={{ mt: 2 }}>
+            New here?{" "}
+            <Link component="button" type="button" onClick={onShowSignUp}>
+              Create an account
+            </Link>
+          </Typography>
         </Paper>
       </Box>
     </Container>

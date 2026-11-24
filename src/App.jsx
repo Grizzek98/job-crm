@@ -3,6 +3,7 @@ import { Box, CircularProgress, Alert, createTheme, ThemeProvider, CssBaseline }
 import { Routes, Route } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 import Login from "./pages/Login";
+import SignUp from "./pages/SignUp";
 import MainLayout from "./layouts/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import Companies from "./pages/Companies";
@@ -25,6 +26,7 @@ export default function App() {
   const [session, setSession] = useState(undefined);
   const [connectionError, setConnectionError] = useState(false);
   const [settings, setSettings] = useState(null);
+  const [showSignUp, setShowSignUp] = useState(false);
 
   // Build MUI theme from user settings
   const theme = useMemo(
@@ -114,7 +116,11 @@ export default function App() {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Login />
+        {showSignUp ? (
+          <SignUp onShowSignIn={() => setShowSignUp(false)} />
+        ) : (
+          <Login onShowSignUp={() => setShowSignUp(true)} />
+        )}
       </ThemeProvider>
     );
   }

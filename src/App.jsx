@@ -1,9 +1,11 @@
 import { useEffect, useState, useMemo } from "react";
 import { Box, CircularProgress, Alert, createTheme, ThemeProvider, CssBaseline } from "@mui/material";
 import { Routes, Route } from "react-router-dom";
-import { supabase } from "./supabaseClient";
+import { supabase, openedFromPasswordResetLink } from "./supabaseClient";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import MainLayout from "./layouts/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import Companies from "./pages/Companies";
@@ -26,7 +28,10 @@ export default function App() {
   const [session, setSession] = useState(undefined);
   const [connectionError, setConnectionError] = useState(false);
   const [settings, setSettings] = useState(null);
-  const [showSignUp, setShowSignUp] = useState(false);
+  // Which signed-out screen to show: "signIn", "signUp" or "forgotPassword".
+  const [authScreen, setAuthScreen] = useState("signIn");
+  // True while someone who opened a password-reset link is choosing a new password.
+  const [resettingPassword, setResettingPassword] = useState(openedFromPasswordResetLink);
 
   // Build MUI theme from user settings
   const theme = useMemo(
@@ -45,6 +50,8 @@ export default function App() {
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") setResettingPassword(true);
+      if (event === "SIGNED_OUT") setAuthScreen("signIn");
       if (event === "INITIAL_SESSION") return;
       setSession(session);
       if (session) loadSettings();
@@ -116,11 +123,25 @@ export default function App() {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        {showSignUp ? (
-          <SignUp onShowSignIn={() => setShowSignUp(false)} />
-        ) : (
-          <Login onShowSignUp={() => setShowSignUp(true)} />
+        {authScreen === "signUp" && <SignUp onShowSignIn={() => setAuthScreen("signIn")} />}
+        {authScreen === "forgotPassword" && (
+          <ForgotPassword onShowSignIn={() => setAuthScreen("signIn")} />
         )}
+        {authScreen === "signIn" && (
+          <Login
+            onShowSignUp={() => setAuthScreen("signUp")}
+            onShowForgotPassword={() => setAuthScreen("forgotPassword")}
+          />
+        )}
+      </ThemeProvider>
+    );
+  }
+
+  if (resettingPassword) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <ResetPassword onDone={() => setResettingPassword(false)} />
       </ThemeProvider>
     );
   }

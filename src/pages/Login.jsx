@@ -14,7 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 
-export default function Login({ onShowSignUp }) {
+export default function Login({ onShowSignUp, onShowForgotPassword }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
@@ -86,6 +86,11 @@ export default function Login({ onShowSignUp }) {
               required
               margin="normal"
             />
+            <Box sx={{ textAlign: "right" }}>
+              <Link component="button" type="button" variant="body2" onClick={onShowForgotPassword}>
+                Forgot password?
+              </Link>
+            </Box>
             <Button
               type="submit"
               variant="contained"

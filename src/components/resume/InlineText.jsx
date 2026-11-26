@@ -4,15 +4,21 @@ import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Box } from "@mui/material";
 
-// One line of click-to-edit text for the resume. Enter does nothing (each line
-// is its own field), and the only formatting is bold (Ctrl+B), when allowed.
+// One line of click-to-edit text for the resume. Enter finishes editing (it
+// leaves the field, like clicking away), and the only formatting is bold
+// (Ctrl+B), when allowed.
 
 const SingleLine = Extension.create({
   name: "singleLine",
   addKeyboardShortcuts() {
+    const finish = () => {
+      this.editor.commands.blur();
+      return true;
+    };
     return {
-      Enter: () => true,
-      "Shift-Enter": () => true,
+      Enter: finish,
+      "Shift-Enter": finish,
+      Escape: finish,
     };
   },
 });
@@ -29,11 +35,19 @@ function fromEditorHtml(html) {
     .replace(/<br\s*\/?>/g, " ");
 }
 
-export default function InlineText({ value, onChange, placeholder, allowBold = true, sx }) {
+const escapeHtml = (text) =>
+  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// formatOnBlur (optional): a function that tidies the plain text when the
+// person clicks away, e.g. turning "2/2022 - now" into "Feb 2022 – Present".
+// Only use it on fields without bold, since it works on plain text.
+export default function InlineText({ value, onChange, placeholder, allowBold = true, formatOnBlur, sx }) {
   const onChangeRef = useRef(onChange);
+  const formatRef = useRef(formatOnBlur);
   useEffect(() => {
     onChangeRef.current = onChange;
-  }, [onChange]);
+    formatRef.current = formatOnBlur;
+  }, [onChange, formatOnBlur]);
 
   const [isEmpty, setIsEmpty] = useState(!value);
 
@@ -63,6 +77,16 @@ export default function InlineText({ value, onChange, placeholder, allowBold = t
     onUpdate: ({ editor }) => {
       setIsEmpty(editor.isEmpty);
       onChangeRef.current(editor.isEmpty ? "" : fromEditorHtml(editor.getHTML()));
+    },
+    onBlur: ({ editor }) => {
+      if (!formatRef.current) return;
+      const text = editor.getText();
+      const tidy = formatRef.current(text);
+      if (tidy === text) return;
+      const html = escapeHtml(tidy);
+      editor.commands.setContent(toEditorHtml(html), { emitUpdate: false });
+      setIsEmpty(!tidy);
+      onChangeRef.current(html);
     },
   });
 

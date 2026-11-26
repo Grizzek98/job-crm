@@ -19,11 +19,14 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutlined";
+import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
 
 import InlineText from "../components/resume/InlineText";
 import SortableList from "../components/resume/SortableList";
 import { getOrCreateMasterResume, updateResumeContent } from "../services/resumeService";
-import { newBullet, newEducation, newJob } from "../utils/resumeTemplate";
+import { newBullet, newEducation, newJob, newListSection } from "../utils/resumeTemplate";
+import { formatDateRange, isUnreadableDateRange } from "../utils/resumeDates";
+import { HEADER_TITLE_TIP, SECTION_TIPS } from "../utils/resumeTips";
 
 const SAVE_DELAY_MS = 800;
 
@@ -141,12 +144,15 @@ export default function Resume() {
         <SaveStatus status={saveStatus} />
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Click any text to change it. Drag the ⋮⋮ handle to move things around. Select words and
+        <strong>This is the Resume Builder!</strong> This format is ATS-friendly and readable by
+        the AI tools recruiters use to evaluate resumes. Click any text to change it, and press
+        Enter when you're done. Drag the ⋮⋮ handle to move things around. Select words and
         press <strong>Ctrl+B</strong> to make them bold. The eye icon hides an item without
-        deleting it.
+        deleting it. Point at a section heading or its lightbulb for tips.
       </Typography>
 
-      <Box sx={{ overflowX: "auto", pb: 4 }}>
+      {/* Padding on top so the scroll box doesn't clip the page's shadow there. */}
+      <Box sx={{ overflowX: "auto", pt: 1, pb: 4 }}>
         <Paper
           elevation={3}
           sx={{ ...PAGE, mx: "auto", borderRadius: 0, bgcolor: "#fff", boxSizing: "border-box" }}
@@ -160,13 +166,19 @@ export default function Resume() {
               allowBold={false}
               sx={{ fontSize: "18pt", fontWeight: 700 }}
             />
-            <InlineText
-              value={header.title}
-              onChange={setHeader("title")}
-              placeholder="Job title"
-              allowBold={false}
-              sx={{ fontSize: "12pt", fontWeight: 700 }}
-            />
+            <Row right={<TipTooltip tip={HEADER_TITLE_TIP}><TipIcon /></TipTooltip>}>
+              <TipTooltip tip={HEADER_TITLE_TIP} placement="top">
+                <Box>
+                  <InlineText
+                    value={header.title}
+                    onChange={setHeader("title")}
+                    placeholder="Job title"
+                    allowBold={false}
+                    sx={{ fontSize: "12pt", fontWeight: 700 }}
+                  />
+                </Box>
+              </TipTooltip>
+            </Row>
             <Box sx={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
               <InlineText value={header.location} onChange={setHeader("location")} placeholder="City, State" allowBold={false} sx={{ minWidth: "5em" }} />
               <Separator />
@@ -193,9 +205,19 @@ export default function Resume() {
                 handle={handle}
                 update={(fn) => updateSection(section.id, fn)}
                 askToConfirm={askToConfirm}
+                onDelete={() =>
+                  change((c) => ({ ...c, sections: c.sections.filter((s) => s.id !== section.id) }))
+                }
               />
             )}
           </SortableList>
+          {/* Sits out in the left margin, level with the section handles, so it
+              doesn't look like part of the last section. */}
+          <Box sx={{ mt: "12pt", ml: "-40px" }}>
+            <AddButton onClick={() => change((c) => ({ ...c, sections: [...c.sections, newListSection()] }))}>
+              Add section
+            </AddButton>
+          </Box>
         </Paper>
       </Box>
 
@@ -222,7 +244,8 @@ export default function Resume() {
 
 // ── Sections ─────────────────────────────────────────────────────────────────
 
-function Section({ section, handle, update, askToConfirm }) {
+function Section({ section, handle, update, askToConfirm, onDelete }) {
+  const tip = SECTION_TIPS[section.type];
   return (
     <Box sx={{ mt: "10pt", opacity: section.hidden ? 0.4 : 1 }}>
       <Row
@@ -232,20 +255,41 @@ function Section({ section, handle, update, askToConfirm }) {
             <HideButton hidden={section.hidden} what="section" onToggle={() => update((s) => ({ ...s, hidden: !s.hidden }))} />
           </>
         }
+        right={
+          <>
+            {tip && (
+              <TipTooltip tip={tip}>
+                <TipIcon />
+              </TipTooltip>
+            )}
+            {section.type === "list" && (
+              <DeleteButton
+                what="section"
+                onClick={() =>
+                  askToConfirm(`Delete the "${stripHtml(section.title) || "untitled"}" section and everything in it?`, onDelete)
+                }
+              />
+            )}
+          </>
+        }
       >
-        <InlineText
-          value={section.title}
-          onChange={(title) => update((s) => ({ ...s, title }))}
-          placeholder="Section title"
-          allowBold={false}
-          sx={{
-            fontSize: "11.5pt",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            borderBottom: "1px solid #000",
-            mb: "4pt",
-          }}
-        />
+        <TipTooltip tip={tip} placement="top-start">
+          <Box>
+            <InlineText
+              value={section.title}
+              onChange={(title) => update((s) => ({ ...s, title }))}
+              placeholder={section.type === "list" ? "Section title (for example, Volunteer Experience)" : "Section title"}
+              allowBold={false}
+              sx={{
+                fontSize: "11.5pt",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                borderBottom: "1px solid #000",
+                mb: "4pt",
+              }}
+            />
+          </Box>
+        </TipTooltip>
       </Row>
 
       {section.type === "summary" && (
@@ -338,6 +382,7 @@ function Section({ section, handle, update, askToConfirm }) {
 
 function Job({ job, handle, update, onDelete }) {
   const setField = (field) => (value) => update((j) => ({ ...j, [field]: value }));
+  const [editingDates, setEditingDates] = useState(false);
 
   return (
     <Box sx={{ mb: "6pt" }}>
@@ -349,7 +394,25 @@ function Job({ job, handle, update, onDelete }) {
           <Separator />
           <InlineText value={job.location} onChange={setField("location")} placeholder="State" allowBold={false} sx={{ minWidth: "2em" }} />
         </Box>
-        <InlineText value={job.dates} onChange={setField("dates")} placeholder="Start – End" allowBold={false} />
+        <Box onFocus={() => setEditingDates(true)} onBlur={() => setEditingDates(false)}>
+          <InlineText
+            value={job.dates}
+            onChange={setField("dates")}
+            placeholder="Start – End (for example, Feb 2022 – Present)"
+            allowBold={false}
+            formatOnBlur={formatDateRange}
+          />
+        </Box>
+        {!editingDates && isUnreadableDateRange(htmlToText(job.dates)) && (
+          <Typography
+            variant="caption"
+            color="error"
+            sx={{ display: "flex", alignItems: "center", gap: 0.5, fontFamily: "Roboto, sans-serif" }}
+          >
+            <ErrorOutlineIcon sx={{ fontSize: 14 }} />
+            Try to only use the month and year, even if you have to guess (for example, Jun 2020 – Present).
+          </Typography>
+        )}
         <InlineText
           value={job.description}
           onChange={setField("description")}
@@ -386,7 +449,7 @@ function Job({ job, handle, update, onDelete }) {
                   <InlineText
                     value={bullet.text}
                     onChange={(text) => setBullet((b) => ({ ...b, text }))}
-                    placeholder="What you did and the result"
+                    placeholder="What you did and the result. Numbers stand out (for example, grew sales 35%)"
                     sx={{ flex: 1 }}
                   />
                 </Box>
@@ -454,11 +517,48 @@ function Row({ left, right, hidden, children, sx }) {
       )}
       <Box sx={{ opacity: hidden ? 0.4 : 1 }}>{children}</Box>
       {right && (
-        <Box className="row-controls" sx={{ position: "absolute", left: "100%", top: -2, pl: 0.5 }}>
+        <Box className="row-controls" sx={{ position: "absolute", left: "100%", top: -2, display: "flex", alignItems: "center", pl: 0.5 }}>
           {right}
         </Box>
       )}
     </Box>
+  );
+}
+
+function TipIcon(props) {
+  return (
+    <LightbulbOutlinedIcon
+      {...props}
+      sx={{ fontSize: 18, color: "warning.main", m: 0.25, cursor: "help" }}
+      aria-label="Tips"
+    />
+  );
+}
+
+// A friendly hint that appears when the pointer rests on `children`.
+function TipTooltip({ tip, placement = "right-start", children }) {
+  if (!tip) return children;
+  return (
+    <Tooltip
+      placement={placement}
+      enterDelay={300}
+      disableInteractive
+      title={
+        <Box sx={{ maxWidth: 320, py: 0.5 }}>
+          <Typography variant="subtitle2" sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 0.5 }}>
+            <LightbulbOutlinedIcon sx={{ fontSize: 16 }} /> Tip
+          </Typography>
+          {tip.map((line) => (
+            <Typography key={line} variant="body2" sx={{ mb: 0.75, "&:last-child": { mb: 0 } }}>
+              {line}
+            </Typography>
+          ))}
+        </Box>
+      }
+      slotProps={{ tooltip: { sx: { bgcolor: "grey.800", fontSize: 13 } } }}
+    >
+      {children}
+    </Tooltip>
   );
 }
 
@@ -527,4 +627,9 @@ function SaveStatus({ status }) {
 
 function stripHtml(html) {
   return (html ?? "").replace(/<[^>]+>/g, "").trim();
+}
+
+// Plain text of a stored field (tags removed, &amp; etc. turned back into characters).
+function htmlToText(html) {
+  return stripHtml(html).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }

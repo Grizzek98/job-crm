@@ -35,6 +35,15 @@ export const newJob = () => ({
 
 export const newEducation = () => ({ id: newId(), degree: "", school: "", details: "" });
 
+// An extra section of plain lines, such as Volunteer Experience or Certifications.
+export const newListSection = () => ({
+  id: newId(),
+  type: "list",
+  title: "",
+  hidden: false,
+  items: [newBullet()],
+});
+
 export function sampleResumeContent() {
   return {
     header: {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -31,7 +32,15 @@ import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 
 import InlineText from "../components/resume/InlineText";
 import SortableList from "../components/resume/SortableList";
-import { getOrCreateMasterResume, updateResumeContent } from "../services/resumeService";
+import JobListingPanel from "../components/resume/JobListingPanel";
+import { ResumePicker, TailorButton } from "../components/resume/ResumeToolbar";
+import {
+  deleteResume,
+  getOrCreateMasterResume,
+  getOrCreateTailoredResume,
+  getResume,
+  updateResumeContent,
+} from "../services/resumeService";
 import { newBullet, newEducation, newJob, newListSection } from "../utils/resumeTemplate";
 import { formatDateRange, isUnreadableDateRange } from "../utils/resumeDates";
 import { HEADER_TITLE_TIP, SECTION_TIPS } from "../utils/resumeTips";
@@ -51,12 +60,48 @@ const PAGE = {
   color: "#000",
 };
 
-export default function Resume() {
-  const [resumeId, setResumeId] = useState(null);
+// Routes:
+//   /resume                  the master resume
+//   /resume/:resumeId        a tailored copy
+//   /resume/job/:positionId  open (or first make) the tailored copy for a job
+export default function ResumePage() {
+  const { resumeId, positionId } = useParams();
+  if (positionId) return <OpenTailoredResume key={positionId} positionId={positionId} />;
+  // A new key per resume gives each one fresh editor state and its own autosave.
+  return <ResumeEditor key={resumeId ?? "master"} routeId={resumeId} />;
+}
+
+function OpenTailoredResume({ positionId }) {
+  const navigate = useNavigate();
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOrCreateTailoredResume(positionId)
+      .then((r) => !cancelled && navigate(`/resume/${r.id}`, { replace: true }))
+      .catch((err) => !cancelled && setError(err.message ?? String(err)));
+    return () => {
+      cancelled = true;
+    };
+  }, [positionId, navigate]);
+
+  if (error) return <Alert severity="error">Couldn't make the tailored resume: {error}</Alert>;
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2, py: 8 }}>
+      <CircularProgress size={24} />
+      <Typography color="text.secondary">Copying your master resume for this job…</Typography>
+    </Box>
+  );
+}
+
+function ResumeEditor({ routeId }) {
+  const navigate = useNavigate();
+  const [resume, setResume] = useState(null); // the row, minus content
   const [content, setContent] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [saveStatus, setSaveStatus] = useState("saved"); // "saved" | "saving" | "error"
-  const [confirm, setConfirm] = useState(null); // { message, onConfirm }
+  const [confirm, setConfirm] = useState(null); // { message, onConfirm, action }
+  const resumeId = resume?.id ?? null;
 
   // Autosave bookkeeping (refs so the timer and unmount see the latest values).
   // saveStatus === "saving" means there are changes not yet saved.
@@ -66,18 +111,19 @@ export default function Resume() {
 
   useEffect(() => {
     let cancelled = false;
-    getOrCreateMasterResume()
+    (routeId ? getResume(routeId) : getOrCreateMasterResume())
       .then((r) => {
         if (cancelled) return;
         idRef.current = r.id;
-        setResumeId(r.id);
-        setContent(r.content);
+        const { content: loaded, ...row } = r;
+        setResume(row);
+        setContent(loaded);
       })
       .catch((err) => !cancelled && setLoadError(err.message ?? String(err)));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [routeId]);
 
   useEffect(() => {
     latestRef.current = content;
@@ -129,7 +175,22 @@ export default function Resume() {
       sections: c.sections.map((s) => (s.id === sectionId ? fn(s) : s)),
     }));
 
-  const askToConfirm = (message, onConfirm) => setConfirm({ message, onConfirm });
+  const askToConfirm = (message, onConfirm, action = "Delete") => setConfirm({ message, onConfirm, action });
+
+  const deleteThisCopy = () =>
+    askToConfirm(
+      `Delete the tailored resume "${resume.name}"? Your master resume and the job itself stay as they are.`,
+      async () => {
+        pendingRef.current = false; // nothing left to save
+        try {
+          await deleteResume(resume.id);
+          navigate("/resume");
+        } catch (err) {
+          console.error(err);
+          setSaveStatus("error");
+        }
+      },
+    );
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loadError) {
@@ -144,15 +205,29 @@ export default function Resume() {
   }
 
   const { header } = content;
+  const tailored = !resume.is_master;
 
   return (
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1, flexWrap: "wrap" }}>
         <Typography variant="h4">Resume</Typography>
+        <ResumePicker currentId={resume.id} />
         <SaveStatus status={saveStatus} />
         <Box sx={{ flex: 1 }} />
-        <DownloadButton content={content} />
+        <TailorButton />
+        {tailored && (
+          <Button color="error" startIcon={<DeleteOutlineIcon />} onClick={deleteThisCopy}>
+            Delete this copy
+          </Button>
+        )}
+        <DownloadButton content={content} fileSuffix={tailored ? companyFromName(resume.name) : ""} />
       </Box>
+      {tailored && (
+        <Alert severity="info" sx={{ mb: 1 }}>
+          This is a <strong>tailored copy</strong> for <strong>{resume.name}</strong>. Reorder and
+          reword it for this job. Changes here don't affect your master resume.
+        </Alert>
+      )}
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         <strong>This is the Resume Builder!</strong> This format is ATS-friendly and readable by
         the AI tools recruiters use to evaluate resumes. Click any text to change it, and press
@@ -161,8 +236,9 @@ export default function Resume() {
         deleting it. Point at a section heading or its lightbulb for tips.
       </Typography>
 
+      <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
       {/* Padding on top so the scroll box doesn't clip the page's shadow there. */}
-      <Box sx={{ overflowX: "auto", pt: 1, pb: 4 }}>
+      <Box sx={{ flex: 1, minWidth: 0, overflowX: "auto", pt: 1, pb: 4 }}>
         <Paper
           elevation={3}
           sx={{ ...PAGE, mx: "auto", borderRadius: 0, bgcolor: "#fff", boxSizing: "border-box" }}
@@ -230,6 +306,8 @@ export default function Resume() {
           </Box>
         </Paper>
       </Box>
+      {tailored && resume.position_id && <JobListingPanel positionId={resume.position_id} />}
+      </Box>
 
       <Dialog open={!!confirm} onClose={() => setConfirm(null)}>
         <DialogContent>
@@ -244,12 +322,18 @@ export default function Resume() {
               setConfirm(null);
             }}
           >
-            Delete
+            {confirm?.action ?? "Delete"}
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
+}
+
+// "Marketing Manager – Summit Outdoor Co." -> "Summit Outdoor Co." (for file names).
+function companyFromName(name) {
+  const parts = (name ?? "").split(" – ");
+  return parts[parts.length - 1].trim();
 }
 
 // ── Sections ─────────────────────────────────────────────────────────────────
@@ -615,7 +699,7 @@ function Separator() {
 
 // "Download" with a choice of PDF or Word. Both are built in the browser from
 // the same content, so they match. The libraries load only when first used.
-function DownloadButton({ content }) {
+function DownloadButton({ content, fileSuffix }) {
   const [anchor, setAnchor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -629,10 +713,10 @@ function DownloadButton({ content }) {
       const model = buildResumeModel(content);
       if (format === "pdf") {
         const { buildResumePdf } = await import("../utils/resumeExport/resumePdf");
-        downloadBlob(await buildResumePdf(model), resumeFileName(model, "pdf"));
+        downloadBlob(await buildResumePdf(model), resumeFileName(model, "pdf", fileSuffix));
       } else {
         const { buildResumeDocx } = await import("../utils/resumeExport/resumeDocx");
-        downloadBlob(await buildResumeDocx(model), resumeFileName(model, "docx"));
+        downloadBlob(await buildResumeDocx(model), resumeFileName(model, "docx", fileSuffix));
       }
     } catch (err) {
       console.error(err);

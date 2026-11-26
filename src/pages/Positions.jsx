@@ -25,6 +25,8 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import { useNavigate } from "react-router-dom";
 import { getPositions, deletePosition } from "../services/positionService";
 import { getCompanies } from "../services/companyService";
 import { useNotify } from "../context/NotificationContext";
@@ -86,6 +88,7 @@ function formatPay(position) {
 
 export default function Positions() {
   const notify = useNotify();
+  const navigate = useNavigate();
   const [positions, setPositions] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -266,7 +269,17 @@ export default function Positions() {
                           "—"
                         )}
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        <Tooltip title="Tailored resume for this job">
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => navigate(`/resume/job/${position.id}`)}
+                            aria-label="Tailored resume for this job"
+                          >
+                            <ArticleOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Edit">
                           <IconButton
                             size="small"

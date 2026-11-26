@@ -134,6 +134,8 @@ export default function App() {
           <Route path="positions" element={<Positions />} />
           <Route path="contacts" element={<Contacts />} />
           <Route path="resume" element={<Resume />} />
+          <Route path="resume/:resumeId" element={<Resume />} />
+          <Route path="resume/job/:positionId" element={<Resume />} />
           <Route path="documents" element={<Documents />} />
           <Route path="events" element={<Events />} />
           <Route path="focus" element={<Focus />} />

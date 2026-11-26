@@ -2,7 +2,37 @@ import { supabase } from "../supabaseClient";
 import { createAutoEvent } from "./eventService";
 
 const APP_SELECT =
-  "*, positions(name, pay_min, pay_max, pay_type, location, companies(name)), resume:documents!resume_id(id, name), cover_letter:documents!cover_letter_id(id, name)";
+  "*, positions(name, pay_min, pay_max, pay_type, location, companies(name)), resume:documents!resume_id(id, name), builder_resume:resumes!builder_resume_id(id, name, is_master), cover_letter:documents!cover_letter_id(id, name)";
+
+// An application's resume is either an uploaded file (resume_id) or a Resume
+// Builder resume (builder_resume_id). Forms keep both in one value:
+// "doc:<id>", "builder:<id>" or "".
+export function resumeChoiceOf(app) {
+  if (app?.builder_resume_id) return `builder:${app.builder_resume_id}`;
+  if (app?.resume_id) return `doc:${app.resume_id}`;
+  return "";
+}
+
+export function resumeChoiceToColumns(choice) {
+  const [kind, id] = (choice ?? "").split(":");
+  return {
+    resume_id: kind === "doc" ? id : null,
+    builder_resume_id: kind === "builder" ? id : null,
+  };
+}
+
+// { name, builderPath } for showing an application's attached resume.
+export function attachedResume(app) {
+  if (app?.builder_resume) {
+    const r = app.builder_resume;
+    return {
+      name: r.is_master ? "Master resume (Resume Builder)" : `${r.name} (Resume Builder)`,
+      builderPath: r.is_master ? "/resume" : `/resume/${r.id}`,
+    };
+  }
+  if (app?.resume) return { name: app.resume.name, builderPath: null };
+  return null;
+}
 
 // Milestone timestamps are set the FIRST time an application reaches a stage and
 // are never cleared — they let the dashboard report cumulative "ever reached X"

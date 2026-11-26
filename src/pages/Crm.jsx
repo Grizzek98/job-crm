@@ -20,6 +20,7 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
+  ListSubheader,
   MenuItem,
   Popover,
   Select,
@@ -58,7 +59,16 @@ import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import StickyNote2Icon from "@mui/icons-material/StickyNote2";
 import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
-import { getApplications, createApplication, updateApplication, deleteApplication } from "../services/applicationService";
+import {
+  getApplications,
+  createApplication,
+  updateApplication,
+  deleteApplication,
+  resumeChoiceOf,
+  resumeChoiceToColumns,
+  attachedResume,
+} from "../services/applicationService";
+import { listResumes } from "../services/resumeService";
 import { getCompanies } from "../services/companyService";
 import { getPositions } from "../services/positionService";
 import { getContacts } from "../services/contactService";
@@ -374,7 +384,7 @@ const emptyAppForm = {
   position_id: "",
   status: "applied",
   applied_date: dayjs().format("YYYY-MM-DD"),
-  resume_id: "",
+  resume_choice: "", // "doc:<id>" | "builder:<id>" | "" (see applicationService)
   cover_letter_id: "",
   notes: "",
 };
@@ -394,6 +404,7 @@ export default function Crm() {
   const [contacts, setContacts] = useState([]);
   const [applications, setApplications] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [builderResumes, setBuilderResumes] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // ── Filter / search ───────────────────────────────────────────────────────
@@ -437,18 +448,24 @@ export default function Crm() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [cos, pos, cts, apps, docs] = await Promise.all([
+      const [cos, pos, cts, apps, docs, built] = await Promise.all([
         getCompanies(),
         getPositions(),
         getContacts(),
         getApplications(),
         getDocuments(),
+        // Optional extra: the CRM still works if builder resumes can't load.
+        listResumes().catch((err) => {
+          console.error(err);
+          return [];
+        }),
       ]);
       setCompanies(cos);
       setPositions(pos);
       setContacts(cts);
       setApplications(apps);
       setDocuments(docs);
+      setBuilderResumes(built);
     } catch (err) {
       notify(err.message, "error");
     } finally {
@@ -580,7 +597,9 @@ export default function Crm() {
   // ── Application dialog handlers ───────────────────────────────────────────
   function openApply(pos) {
     setEditingApp(null);
-    setAppForm({ ...emptyAppForm, position_id: pos.id });
+    // If this job has a tailored resume from the builder, pick it to start with.
+    const tailored = builderResumes.find((r) => r.position_id === pos.id);
+    setAppForm({ ...emptyAppForm, position_id: pos.id, resume_choice: tailored ? `builder:${tailored.id}` : "" });
     setAppDialogOpen(true);
   }
 
@@ -591,7 +610,7 @@ export default function Crm() {
       position_id: app.position_id ?? "",
       status: app.status ?? "applied",
       applied_date: app.applied_date ?? dayjs().format("YYYY-MM-DD"),
-      resume_id: app.resume_id ?? "",
+      resume_choice: resumeChoiceOf(app),
       cover_letter_id: app.cover_letter_id ?? "",
       notes: app.notes ?? "",
     });
@@ -606,7 +625,7 @@ export default function Crm() {
         position_id: appForm.position_id,
         status: appForm.status,
         applied_date: appForm.applied_date || null,
-        resume_id: appForm.resume_id || null,
+        ...resumeChoiceToColumns(appForm.resume_choice),
         cover_letter_id: appForm.cover_letter_id || null,
         notes: appForm.notes.trim() || null,
       };
@@ -1172,8 +1191,8 @@ export default function Crm() {
                               {showApp("docs") && (
                                 <TableCell>
                                   <Stack direction="row" spacing={0.5}>
-                                    {app.resume && (
-                                      <Tooltip title={`Resume: ${app.resume.name}`}>
+                                    {attachedResume(app) && (
+                                      <Tooltip title={`Resume: ${attachedResume(app).name}`}>
                                         <ArticleIcon fontSize="small" color="primary" />
                                       </Tooltip>
                                     )}
@@ -1279,10 +1298,20 @@ export default function Crm() {
                   <Typography variant="caption" color="text.secondary">Location</Typography>
                   <Typography>{drawerApp.positions?.location ?? "—"}</Typography>
                 </Box>
-                {drawerApp.resume && (
+                {attachedResume(drawerApp) && (
                   <Box>
                     <Typography variant="caption" color="text.secondary">Resume</Typography>
-                    <Typography variant="body2" color="primary">{drawerApp.resume.name}</Typography>
+                    <Typography variant="body2" color="primary">{attachedResume(drawerApp).name}</Typography>
+                    {attachedResume(drawerApp).builderPath && (
+                      <Button
+                        size="small"
+                        startIcon={<OpenInNewIcon fontSize="small" />}
+                        onClick={() => navigate(attachedResume(drawerApp).builderPath)}
+                        sx={{ px: 0 }}
+                      >
+                        Open in Resume Builder
+                      </Button>
+                    )}
                   </Box>
                 )}
                 {drawerApp.cover_letter && (
@@ -1377,12 +1406,24 @@ export default function Crm() {
               <FormControl fullWidth>
                 <InputLabel>Resume (optional)</InputLabel>
                 <Select
-                  value={appForm.resume_id}
+                  value={appForm.resume_choice}
                   label="Resume (optional)"
-                  onChange={(e) => setAppForm((f) => ({ ...f, resume_id: e.target.value }))}
+                  onChange={(e) => setAppForm((f) => ({ ...f, resume_choice: e.target.value }))}
                 >
                   <MenuItem value=""><em>None</em></MenuItem>
-                  {resumes.map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+                  {builderResumes.length > 0 && <ListSubheader>From the Resume Builder</ListSubheader>}
+                  {builderResumes.map((r) => (
+                    <MenuItem key={r.id} value={`builder:${r.id}`}>
+                      {r.is_master ? "Master resume" : r.name}
+                      {r.position_id && r.position_id === appForm.position_id && (
+                        <Box component="span" sx={{ ml: 1, color: "text.secondary", fontSize: 13 }}>
+                          (made for this job)
+                        </Box>
+                      )}
+                    </MenuItem>
+                  ))}
+                  {resumes.length > 0 && <ListSubheader>Uploaded files</ListSubheader>}
+                  {resumes.map((d) => <MenuItem key={d.id} value={`doc:${d.id}`}>{d.name}</MenuItem>)}
                 </Select>
               </FormControl>
               <FormControl fullWidth>

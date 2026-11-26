@@ -38,6 +38,7 @@ import BusinessIcon        from "@mui/icons-material/Business";
 import WorkIcon            from "@mui/icons-material/Work";
 import PeopleIcon          from "@mui/icons-material/People";
 import DescriptionIcon     from "@mui/icons-material/Description";
+import ArticleIcon         from "@mui/icons-material/Article";
 import EventIcon           from "@mui/icons-material/Event";
 import SelfImprovementIcon from "@mui/icons-material/SelfImprovement";
 import OpenInNewIcon       from "@mui/icons-material/OpenInNew";
@@ -82,6 +83,7 @@ const group2 = [
   { label: "Companies", path: "/companies", icon: <BusinessIcon /> },
   { label: "Positions", path: "/positions", icon: <WorkIcon /> },
   { label: "Contacts",  path: "/contacts",  icon: <PeopleIcon /> },
+  { label: "Resume",    path: "/resume",    icon: <ArticleIcon /> },
   { label: "Documents", path: "/documents", icon: <DescriptionIcon /> },
   { label: "Events",    path: "/events",    icon: <EventIcon /> },
   { label: "Settings",  path: "/settings",  icon: <SettingsIcon /> },

@@ -9,6 +9,7 @@ import Companies from "./pages/Companies";
 import Positions from "./pages/Positions";
 import Contacts from "./pages/Contacts";
 import Documents from "./pages/Documents";
+import Resume from "./pages/Resume";
 import Crm from "./pages/Crm";
 import Stats from "./pages/Stats";
 import Timeline from "./pages/Timeline";
@@ -132,6 +133,7 @@ export default function App() {
           <Route path="companies" element={<Companies />} />
           <Route path="positions" element={<Positions />} />
           <Route path="contacts" element={<Contacts />} />
+          <Route path="resume" element={<Resume />} />
           <Route path="documents" element={<Documents />} />
           <Route path="events" element={<Events />} />
           <Route path="focus" element={<Focus />} />

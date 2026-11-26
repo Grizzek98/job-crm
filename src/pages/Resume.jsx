@@ -9,6 +9,10 @@ import {
   DialogContent,
   DialogContentText,
   IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   Paper,
   Tooltip,
   Typography,
@@ -20,6 +24,10 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutlined";
 import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
+import DownloadIcon from "@mui/icons-material/Download";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 
 import InlineText from "../components/resume/InlineText";
 import SortableList from "../components/resume/SortableList";
@@ -142,6 +150,8 @@ export default function Resume() {
       <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1, flexWrap: "wrap" }}>
         <Typography variant="h4">Resume</Typography>
         <SaveStatus status={saveStatus} />
+        <Box sx={{ flex: 1 }} />
+        <DownloadButton content={content} />
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         <strong>This is the Resume Builder!</strong> This format is ATS-friendly and readable by
@@ -599,6 +609,69 @@ function Separator() {
   return (
     <Box component="span" sx={{ px: "0.35em", whiteSpace: "pre" }}>
       |
+    </Box>
+  );
+}
+
+// "Download" with a choice of PDF or Word. Both are built in the browser from
+// the same content, so they match. The libraries load only when first used.
+function DownloadButton({ content }) {
+  const [anchor, setAnchor] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const download = async (format) => {
+    setAnchor(null);
+    setBusy(true);
+    setError(null);
+    try {
+      const { buildResumeModel, resumeFileName, downloadBlob } = await import("../utils/resumeExport/resumeModel");
+      const model = buildResumeModel(content);
+      if (format === "pdf") {
+        const { buildResumePdf } = await import("../utils/resumeExport/resumePdf");
+        downloadBlob(await buildResumePdf(model), resumeFileName(model, "pdf"));
+      } else {
+        const { buildResumeDocx } = await import("../utils/resumeExport/resumeDocx");
+        downloadBlob(await buildResumeDocx(model), resumeFileName(model, "docx"));
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Sorry, the download didn't work. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      {error && (
+        <Typography variant="body2" color="error">
+          {error}
+        </Typography>
+      )}
+      <Button
+        variant="contained"
+        startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <DownloadIcon />}
+        endIcon={<ArrowDropDownIcon />}
+        disabled={busy}
+        onClick={(e) => setAnchor(e.currentTarget)}
+      >
+        {busy ? "Preparing…" : "Download"}
+      </Button>
+      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}>
+        <MenuItem onClick={() => download("pdf")}>
+          <ListItemIcon>
+            <PictureAsPdfOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="PDF" secondary="Best for most job applications" />
+        </MenuItem>
+        <MenuItem onClick={() => download("docx")}>
+          <ListItemIcon>
+            <DescriptionOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Word (.docx)" secondary="When a job asks for Word, or to edit it later" />
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

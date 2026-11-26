@@ -144,12 +144,15 @@ export default function Resume() {
         <SaveStatus status={saveStatus} />
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Click any text to change it. Drag the ⋮⋮ handle to move things around. Select words and
+        <strong>This is the Resume Builder!</strong> This format is ATS-friendly and readable by
+        the AI tools recruiters use to evaluate resumes. Click any text to change it, and press
+        Enter when you're done. Drag the ⋮⋮ handle to move things around. Select words and
         press <strong>Ctrl+B</strong> to make them bold. The eye icon hides an item without
         deleting it. Point at a section heading or its lightbulb for tips.
       </Typography>
 
-      <Box sx={{ overflowX: "auto", pb: 4 }}>
+      {/* Padding on top so the scroll box doesn't clip the page's shadow there. */}
+      <Box sx={{ overflowX: "auto", pt: 1, pb: 4 }}>
         <Paper
           elevation={3}
           sx={{ ...PAGE, mx: "auto", borderRadius: 0, bgcolor: "#fff", boxSizing: "border-box" }}

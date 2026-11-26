@@ -4,15 +4,21 @@ import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Box } from "@mui/material";
 
-// One line of click-to-edit text for the resume. Enter does nothing (each line
-// is its own field), and the only formatting is bold (Ctrl+B), when allowed.
+// One line of click-to-edit text for the resume. Enter finishes editing (it
+// leaves the field, like clicking away), and the only formatting is bold
+// (Ctrl+B), when allowed.
 
 const SingleLine = Extension.create({
   name: "singleLine",
   addKeyboardShortcuts() {
+    const finish = () => {
+      this.editor.commands.blur();
+      return true;
+    };
     return {
-      Enter: () => true,
-      "Shift-Enter": () => true,
+      Enter: finish,
+      "Shift-Enter": finish,
+      Escape: finish,
     };
   },
 });

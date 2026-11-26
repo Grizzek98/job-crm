@@ -97,10 +97,13 @@ export function buildResumeModel(content) {
   return { header, sections };
 }
 
-// "Jordan Rivera Resume.pdf" — safe for Windows and Mac file names.
-export function resumeFileName(model, extension) {
-  const name = model.header.name.replace(/[\\/:*?"<>|]+/g, "").trim();
-  return `${name ? `${name} ` : ""}Resume.${extension}`;
+// "Jordan Rivera Resume.pdf", or "Jordan Rivera Resume - Summit Outdoor.pdf"
+// for a tailored copy. Safe for Windows and Mac file names.
+export function resumeFileName(model, extension, suffix = "") {
+  const clean = (s) => s.replace(/[\\/:*?"<>|]+/g, "").trim();
+  const name = clean(model.header.name);
+  const extra = clean(suffix);
+  return `${name ? `${name} ` : ""}Resume${extra ? ` - ${extra}` : ""}.${extension}`;
 }
 
 export function downloadBlob(blob, fileName) {

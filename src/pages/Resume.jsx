@@ -25,8 +25,8 @@ import InlineText from "../components/resume/InlineText";
 import SortableList from "../components/resume/SortableList";
 import { getOrCreateMasterResume, updateResumeContent } from "../services/resumeService";
 import { newBullet, newEducation, newJob, newListSection } from "../utils/resumeTemplate";
-import { formatDateRange } from "../utils/resumeDates";
-import { SECTION_TIPS } from "../utils/resumeTips";
+import { formatDateRange, isUnreadableDateRange } from "../utils/resumeDates";
+import { HEADER_TITLE_TIP, SECTION_TIPS } from "../utils/resumeTips";
 
 const SAVE_DELAY_MS = 800;
 
@@ -163,13 +163,19 @@ export default function Resume() {
               allowBold={false}
               sx={{ fontSize: "18pt", fontWeight: 700 }}
             />
-            <InlineText
-              value={header.title}
-              onChange={setHeader("title")}
-              placeholder="Job title"
-              allowBold={false}
-              sx={{ fontSize: "12pt", fontWeight: 700 }}
-            />
+            <Row right={<TipTooltip tip={HEADER_TITLE_TIP}><TipIcon /></TipTooltip>}>
+              <TipTooltip tip={HEADER_TITLE_TIP} placement="top">
+                <Box>
+                  <InlineText
+                    value={header.title}
+                    onChange={setHeader("title")}
+                    placeholder="Job title"
+                    allowBold={false}
+                    sx={{ fontSize: "12pt", fontWeight: 700 }}
+                  />
+                </Box>
+              </TipTooltip>
+            </Row>
             <Box sx={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
               <InlineText value={header.location} onChange={setHeader("location")} placeholder="City, State" allowBold={false} sx={{ minWidth: "5em" }} />
               <Separator />
@@ -202,9 +208,13 @@ export default function Resume() {
               />
             )}
           </SortableList>
-          <AddButton onClick={() => change((c) => ({ ...c, sections: [...c.sections, newListSection()] }))}>
-            Add section
-          </AddButton>
+          {/* Sits out in the left margin, level with the section handles, so it
+              doesn't look like part of the last section. */}
+          <Box sx={{ mt: "12pt", ml: "-40px" }}>
+            <AddButton onClick={() => change((c) => ({ ...c, sections: [...c.sections, newListSection()] }))}>
+              Add section
+            </AddButton>
+          </Box>
         </Paper>
       </Box>
 
@@ -246,7 +256,7 @@ function Section({ section, handle, update, askToConfirm, onDelete }) {
           <>
             {tip && (
               <TipTooltip tip={tip}>
-                <LightbulbOutlinedIcon sx={{ fontSize: 18, color: "warning.main", m: 0.25, cursor: "help" }} aria-label="Tips for this section" />
+                <TipIcon />
               </TipTooltip>
             )}
             {section.type === "list" && (
@@ -369,6 +379,7 @@ function Section({ section, handle, update, askToConfirm, onDelete }) {
 
 function Job({ job, handle, update, onDelete }) {
   const setField = (field) => (value) => update((j) => ({ ...j, [field]: value }));
+  const [editingDates, setEditingDates] = useState(false);
 
   return (
     <Box sx={{ mb: "6pt" }}>
@@ -380,13 +391,25 @@ function Job({ job, handle, update, onDelete }) {
           <Separator />
           <InlineText value={job.location} onChange={setField("location")} placeholder="State" allowBold={false} sx={{ minWidth: "2em" }} />
         </Box>
-        <InlineText
-          value={job.dates}
-          onChange={setField("dates")}
-          placeholder="Start – End (for example, Feb 2022 – Present)"
-          allowBold={false}
-          formatOnBlur={formatDateRange}
-        />
+        <Box onFocus={() => setEditingDates(true)} onBlur={() => setEditingDates(false)}>
+          <InlineText
+            value={job.dates}
+            onChange={setField("dates")}
+            placeholder="Start – End (for example, Feb 2022 – Present)"
+            allowBold={false}
+            formatOnBlur={formatDateRange}
+          />
+        </Box>
+        {!editingDates && isUnreadableDateRange(htmlToText(job.dates)) && (
+          <Typography
+            variant="caption"
+            color="error"
+            sx={{ display: "flex", alignItems: "center", gap: 0.5, fontFamily: "Roboto, sans-serif" }}
+          >
+            <ErrorOutlineIcon sx={{ fontSize: 14 }} />
+            Try to only use the month and year, even if you have to guess (for example, Jun 2020 – Present).
+          </Typography>
+        )}
         <InlineText
           value={job.description}
           onChange={setField("description")}
@@ -499,6 +522,16 @@ function Row({ left, right, hidden, children, sx }) {
   );
 }
 
+function TipIcon(props) {
+  return (
+    <LightbulbOutlinedIcon
+      {...props}
+      sx={{ fontSize: 18, color: "warning.main", m: 0.25, cursor: "help" }}
+      aria-label="Tips"
+    />
+  );
+}
+
 // A friendly hint that appears when the pointer rests on `children`.
 function TipTooltip({ tip, placement = "right-start", children }) {
   if (!tip) return children;
@@ -591,4 +624,9 @@ function SaveStatus({ status }) {
 
 function stripHtml(html) {
   return (html ?? "").replace(/<[^>]+>/g, "").trim();
+}
+
+// Plain text of a stored field (tags removed, &amp; etc. turned back into characters).
+function htmlToText(html) {
+  return stripHtml(html).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }

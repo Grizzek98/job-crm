@@ -3,7 +3,8 @@
 //
 // People can type dates however they like ("2/2022 - now", "February 22 to
 // 03/2026", "2022-02"). If any part can't be understood, the text is left as
-// it was, so nothing the person typed is ever lost.
+// it was, so nothing the person typed is ever lost, and the Resume page shows
+// a gentle message asking for month and year (isUnreadableDateRange).
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const PRESENT_WORDS = /^(present|current|currently|now|today|ongoing)$/i;
@@ -58,8 +59,18 @@ export function formatDate(text) {
 
 // A date or a date range -> the tidy style above, or the original text.
 export function formatDateRange(text) {
+  return parseDateRange(text) ?? text ?? "";
+}
+
+// True when there's text in the dates field that can't be read as dates.
+export function isUnreadableDateRange(text) {
+  return !!(text ?? "").trim() && parseDateRange(text) === null;
+}
+
+// A date or a date range -> the tidy style above, or null if not understood.
+export function parseDateRange(text) {
   const original = text ?? "";
-  if (!original.trim()) return original;
+  if (!original.trim()) return null;
 
   // Split on a dash with spaces around it, an en/em dash, "to", "until" or
   // "through". A bare "-" is tried last because "2022-02" uses it too.
@@ -69,9 +80,9 @@ export function formatDateRange(text) {
     if (single) return single;
     parts = original.split("-");
   }
-  if (parts.length !== 2) return original;
+  if (parts.length !== 2) return null;
 
   const [start, end] = parts.map(formatDate);
-  if (!start || !end || start === "Present") return original;
+  if (!start || !end || start === "Present") return null;
   return `${start} – ${end}`;
 }

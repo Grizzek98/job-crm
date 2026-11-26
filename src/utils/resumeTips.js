@@ -2,6 +2,12 @@
 // (or its lightbulb icon). Keyed by section type, so a renamed section keeps
 // its tip. Each tip is a list of short paragraphs.
 
+// The job title line under your name.
+export const HEADER_TITLE_TIP = [
+  "Put your most recent or highest job title here, or the job title you'd like to apply for.",
+  "It helps your resume show up in keyword searches, and it gives reviewers a quick understanding of who you are and what you're capable of.",
+];
+
 export const SECTION_TIPS = {
   summary: [
     "Your summary is a brief sentence or two about your most relevant skills, highlighting your area of expertise.",

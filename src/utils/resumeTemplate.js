@@ -35,6 +35,13 @@ export const newJob = () => ({
 
 export const newEducation = () => ({ id: newId(), degree: "", school: "", details: "" });
 
+// A tailored resume is named "Job title – Company"; downloads of it add the
+// company to the file name: "Marketing Manager – Summit Outdoor" -> "Summit Outdoor".
+export function tailoredFileSuffix(name) {
+  const parts = (name ?? "").split(" – ");
+  return parts[parts.length - 1].trim();
+}
+
 // An extra section of plain lines, such as Volunteer Experience or Certifications.
 export const newListSection = () => ({
   id: newId(),

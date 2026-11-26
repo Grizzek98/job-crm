@@ -38,6 +38,9 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import { Link as RouterLink } from "react-router-dom";
+import BuilderResumesCard from "../components/resume/BuilderResumesCard";
 import {
   getDocuments,
   createDocument,
@@ -206,10 +209,19 @@ export default function Documents() {
     <Box>
       <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 3 }}>
         <Typography variant="h5" fontWeight="bold">Documents</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openAddDialog}>
-          Add Document
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button component={RouterLink} to="/resume" variant="outlined" startIcon={<ArticleOutlinedIcon />}>
+            Resume Builder
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openAddDialog}>
+            Add Document
+          </Button>
+        </Stack>
       </Stack>
+
+      <BuilderResumesCard />
+
+      <Typography variant="h6" sx={{ mb: 1 }}>Uploaded files</Typography>
 
       <Card>
         <CardContent sx={{ p: 0 }}>
